@@ -46,6 +46,8 @@ export function getUpdateErrorMessage(error: unknown, translate: TFunction = t):
   const message = getUpdateErrorText(error);
 
   switch (code) {
+    case "updatePrivateBuild":
+      return translate("settings.update.privateBuild");
     case "mirrorChyanCdkEmpty":
       return translate("settings.update.error.cdkEmpty", {
         defaultValue: "Mirror酱 CDK 不能为空",

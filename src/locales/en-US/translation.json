@@ -26,6 +26,31 @@
     "wordCount": "{{count}} characters",
     "wordCountUnit": "characters"
   },
+  "noteTemplates": {
+    "diary": {
+      "name": "Diary",
+      "title": "{{period}} Diary",
+      "record": "Today's Notes",
+      "problems": "Challenges",
+      "plan": "Tomorrow's Plan"
+    },
+    "weekly": {
+      "name": "Weekly Summary",
+      "title": "{{period}} Weekly Summary",
+      "completed": "Completed This Week",
+      "problems": "This Week's Challenges",
+      "plan": "Next Week's Plan",
+      "reflection": "Reflection"
+    },
+    "monthly": {
+      "name": "Monthly Report",
+      "title": "{{period}} Monthly Report",
+      "completed": "Completed This Month",
+      "achievements": "This Month's Achievements",
+      "improvements": "Challenges and Improvements",
+      "plan": "Next Month's Plan"
+    }
+  },
   "contextMenu": {
     "edit": {
       "copy": "Copy",
@@ -41,6 +66,7 @@
     }
   },
   "errors": {
+    "dataDirNotEmpty": "The destination data folder is not empty. Choose an empty folder to avoid overwriting existing data.",
     "categoryAlreadyExists": "Category \"{{category}}\" already exists",
     "categoryNameEmpty": "Category name cannot be empty",
     "categoryNameInvalidChars": "Category name cannot contain special characters",
@@ -54,7 +80,15 @@
     "unsupportedFile": "Only .md files are supported",
     "unsupportedImageFormat": "Unsupported image format",
     "unsupportedShortcut": "{{field}} configuration is invalid",
-    "unsupportedShortcutGeneric": "Shortcut configuration is invalid"
+    "unsupportedShortcutGeneric": "Shortcut configuration is invalid",
+    "recordPeriodInvalid": "Invalid date or period. Please select again.",
+    "recordPeriodConflict": "A record already exists for this period. Open that note instead; nothing was changed.",
+    "systemFolderProtected": "System archive folders are protected. Choose a custom folder or the tile folder.",
+    "folderNotEmpty": "Only empty folders can be deleted. Move their files and subfolders first.",
+    "fileAlreadyExists": "The destination file already exists. Nothing was overwritten.",
+    "relativeImageMove": "This note contains unmanaged relative image references. Import those images or use absolute links before moving it.",
+    "metadataRecoveryRequired": "The note index and backup could not be read. Markdown files are preserved. Back up your data and restore the index; unknown files will not be automatically imported.",
+    "unsafePath": "Unsafe path: outside the notes root, a linked directory, or a folder's own descendant."
   },
   "markdown": {
     "copied": "Copied",
@@ -72,9 +106,9 @@
     "category": {
       "confirmDelete": "Delete \"{{category}}\"?",
       "confirmDeleteAction": "Confirm Delete",
-      "delete": "Delete Category",
+      "delete": "Delete empty folder",
       "emptyFolder": "Empty Folder",
-      "new": "New Category",
+      "new": "New folder",
       "placeholder": "Enter category name…",
       "rename": "Rename",
       "uncategorized": "Uncategorized"
@@ -163,7 +197,7 @@
   "noteMenu": {
     "delete": "Delete Note",
     "export": "Export Markdown",
-    "moveToCategory": "Move to category…"
+    "moveToCategory": "Move to folder…"
   },
   "notepad": {
     "button": {
@@ -227,6 +261,7 @@
       "zhHK": "繁體中文"
     },
     "dataDir": "Data directory",
+    "dataDirConfirmSubdir": "Data will be stored in a floral-notepaper-regulusapplex subfolder of “{{dir}}”. Continue?",
     "openAtCursor": "Open near cursor with shortcut",
     "quickNoteShortcut": "Quick Note shortcut",
     "rememberSurfaceSize": "Remember surface size",
@@ -271,6 +306,7 @@
     "splitScrollSync": "Split view scroll sync",
     "title": "Settings",
     "update": {
+      "privateBuild": "This private build has no update channel yet. In-app updates are paused; update using an installer built from this project.",
       "advanced": "Advanced",
       "allowPrerelease": "Allow prerelease versions",
       "autoCheck": "Automatically check for updates",
@@ -441,5 +477,36 @@
   },
   "tile": {
     "empty": "Empty"
+  },
+  "library": {
+    "title": "Notes",
+    "allNotes": "All notes · Default location",
+    "period": {
+      "week": "{{year}} · Week {{week}}",
+      "month": "{{year}}-{{month}}",
+      "year": "{{year}}"
+    },
+    "diary": "Diary",
+    "weekly": "Weekly reviews",
+    "monthly": "Monthly reports",
+    "tiles": "Tile notes",
+    "expand": "Expand {{name}}",
+    "collapse": "Collapse {{name}}",
+    "location": "Location: {{path}}",
+    "standardLocation": "Standard folder: {{path}}",
+    "manageRecord": "Manage record period…",
+    "createRecord": "Create a period note",
+    "recordType": "Record type",
+    "recordPeriod": "Recorded date / period",
+    "periodHelp": "Filed by the recorded date. Weeks run Monday–Sunday and belong to the month containing Thursday. One note per period; creating again opens the existing note.",
+    "moveToStandard": "Also move to the standard folder (leave content unchanged)",
+    "createOrOpen": "Create or open",
+    "renameMoveFolder": "Rename / move folder…",
+    "folderName": "Folder name",
+    "parentFolder": "Parent folder",
+    "newFolder": "Create a folder inside the selected custom folder",
+    "newFolderAt": "New folder inside {{path}}…",
+    "refresh": "Refresh",
+    "saveFirst": "Save the current note successfully first."
   }
 }

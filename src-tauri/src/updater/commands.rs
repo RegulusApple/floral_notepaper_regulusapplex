@@ -90,6 +90,7 @@ pub async fn update_check(
     state: State<'_, UpdaterState>,
     manual: bool,
 ) -> Result<UpdateCheckResult, AppError> {
+    super::ensure_updates_enabled()?;
     debug_log!("check", "收到检查请求 manual={manual}");
     let task = state.begin_task(UpdateTaskKind::Check)?;
     let paths = state.paths().clone();
@@ -135,6 +136,7 @@ pub async fn update_download(
     state: State<'_, UpdaterState>,
     source: Option<String>,
 ) -> Result<UpdateDownloadResult, AppError> {
+    super::ensure_updates_enabled()?;
     let source = source.as_deref().map(parse_download_source).transpose()?;
     let task = state.begin_task(UpdateTaskKind::Download)?;
     let cancel_flag = task
@@ -197,6 +199,7 @@ pub async fn update_install(
     app: tauri::AppHandle,
     state: State<'_, UpdaterState>,
 ) -> Result<UpdateInstallResult, AppError> {
+    super::ensure_updates_enabled()?;
     let task = state.begin_task(UpdateTaskKind::Install)?;
     let request_id = begin_install_prepare(&app, &state);
     if let Err(error) = wait_for_install_prepare(&app, &state, &request_id).await {
@@ -294,6 +297,7 @@ pub(crate) fn run_automatic_update_check(
     app: tauri::AppHandle,
     state: &UpdaterState,
 ) -> Result<UpdateCheckResult, AppError> {
+    super::ensure_updates_enabled()?;
     let (task, paths) = prepare_update_check(&app, state)?;
     let _task = task;
     let cdk = state.get_mirror_chyan_cdk();

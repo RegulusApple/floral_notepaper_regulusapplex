@@ -1,12 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "花笺 RegulusApplEx",
+  "productName": "花笺",
   "version": "1.2.0",
   "identifier": "com.regulusapplex.floral.notepaper",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "taskkill /F /IM floral-notepaper-regulusapplex.exe 2>nul & npm run build",
+    "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "花笺 RegulusApplEx",
+        "title": "花笺",
         "width": 1180,
         "height": 760,
         "minWidth": 900,
@@ -50,7 +50,9 @@
         "languages": ["SimpChinese"],
         "displayLanguageSelector": false,
         "installerIcon": "icons/icon.ico",
-        "installerHooks": "nsis-hooks.nsh"
+        "installerHooks": "nsis-hooks.nsh",
+        "template": "installer-private.nsi",
+        "startMenuFolder": "floral-notepaper-regulusapplex"
       }
     },
     "fileAssociations": [
@@ -77,7 +79,7 @@
   },
   "plugins": {
     "cli": {
-      "description": "Floral Notepaper RegulusApplEx - lightweight local note app",
+      "description": "Floral Notepaper - lightweight local note app",
       "args": []
     }
   }

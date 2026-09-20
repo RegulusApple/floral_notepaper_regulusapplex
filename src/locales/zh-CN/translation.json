@@ -26,6 +26,31 @@
     "wordCount": "{{count}} 字",
     "wordCountUnit": "字"
   },
+  "noteTemplates": {
+    "diary": {
+      "name": "日记",
+      "title": "{{period}} 日记",
+      "record": "今日记录",
+      "problems": "遇到的问题",
+      "plan": "明日计划"
+    },
+    "weekly": {
+      "name": "周小结",
+      "title": "{{period}} 周小结",
+      "completed": "本周完成",
+      "problems": "本周问题",
+      "plan": "下周计划",
+      "reflection": "复盘"
+    },
+    "monthly": {
+      "name": "月报",
+      "title": "{{period}} 月报",
+      "completed": "本月完成",
+      "achievements": "本月成果",
+      "improvements": "问题与改进",
+      "plan": "下月计划"
+    }
+  },
   "contextMenu": {
     "edit": {
       "copy": "复制",
@@ -41,6 +66,7 @@
     }
   },
   "errors": {
+    "dataDirNotEmpty": "目标数据目录非空，请选择一个空目录，避免覆盖已有数据。",
     "categoryAlreadyExists": "分类「{{category}}」已存在",
     "categoryNameEmpty": "分类名不能为空",
     "categoryNameInvalidChars": "分类名不能包含特殊字符",
@@ -54,7 +80,15 @@
     "unsupportedFile": "只支持导入 .md 文件",
     "unsupportedImageFormat": "不支持的图片格式",
     "unsupportedShortcut": "{{field}} 配置无效",
-    "unsupportedShortcutGeneric": "快捷键配置无效"
+    "unsupportedShortcutGeneric": "快捷键配置无效",
+    "recordPeriodInvalid": "日期或周期无效，请重新选择。",
+    "recordPeriodConflict": "该周期已有记录，请打开已有笔记；未修改任何内容。",
+    "systemFolderProtected": "系统归档目录受保护，请选择自建目录或磁贴目录。",
+    "folderNotEmpty": "只能删除空文件夹，请先移动其中的文件和子文件夹。",
+    "fileAlreadyExists": "目标文件已存在，未覆盖原文件。",
+    "relativeImageMove": "笔记含非应用管理的相对图片引用。请先将图片导入笔记或改用绝对链接，再移动文件。",
+    "metadataRecoveryRequired": "笔记索引和备份无法读取。Markdown 文件仍保留，请先备份数据并恢复索引；不会自动收录未知文件。",
+    "unsafePath": "该路径不安全：不能越过笔记根目录、使用链接目录或移入自身子目录。"
   },
   "markdown": {
     "copied": "已复制",
@@ -72,9 +106,9 @@
     "category": {
       "confirmDelete": "确认删除「{{category}}」？",
       "confirmDeleteAction": "确认删除",
-      "delete": "删除分类",
+      "delete": "删除空文件夹",
       "emptyFolder": "空文件夹",
-      "new": "新建分类",
+      "new": "新建文件夹",
       "placeholder": "输入分类名…",
       "rename": "重命名",
       "uncategorized": "未分类"
@@ -163,7 +197,7 @@
   "noteMenu": {
     "delete": "删除笔记",
     "export": "导出 Markdown",
-    "moveToCategory": "移动到分类…"
+    "moveToCategory": "移动到文件夹…"
   },
   "notepad": {
     "button": {
@@ -227,6 +261,7 @@
       "zhHK": "繁體中文"
     },
     "dataDir": "数据目录",
+    "dataDirConfirmSubdir": "数据将存放在「{{dir}}」下的 floral-notepaper-regulusapplex 子文件夹中，是否继续？",
     "openAtCursor": "快捷键打开时跟随鼠标位置",
     "quickNoteShortcut": "快捷记录快捷键",
     "rememberSurfaceSize": "记住小窗尺寸",
@@ -271,6 +306,7 @@
     "splitScrollSync": "分栏同步滚动",
     "title": "应用设置",
     "update": {
+      "privateBuild": "此私有版本尚未配置更新通道。应用内更新已暂停，请使用本项目构建的安装包更新。",
       "advanced": "高级",
       "allowPrerelease": "允许预发布版本",
       "autoCheck": "自动检查更新",
@@ -441,5 +477,36 @@
   },
   "tile": {
     "empty": "空"
+  },
+  "library": {
+    "title": "笔记",
+    "allNotes": "全部笔记 · 默认位置",
+    "period": {
+      "week": "{{year}}年第{{week}}周",
+      "month": "{{year}}年{{month}}月",
+      "year": "{{year}}年"
+    },
+    "diary": "日记",
+    "weekly": "周小结",
+    "monthly": "月报",
+    "tiles": "磁贴笔记",
+    "expand": "展开 {{name}}",
+    "collapse": "收起 {{name}}",
+    "location": "位置：{{path}}",
+    "standardLocation": "标准归档：{{path}}",
+    "manageRecord": "加入／调整周期管理…",
+    "createRecord": "创建周期笔记",
+    "recordType": "记录类型",
+    "recordPeriod": "记录日期／周期",
+    "periodHelp": "按所记录的日期归档。周一至周日为一周，跨月周归入周四所在的月份。每个周期只保留一篇，重复创建将打开已有笔记。",
+    "moveToStandard": "同时移到标准归档目录（不修改正文）",
+    "createOrOpen": "创建或打开",
+    "renameMoveFolder": "重命名／移动文件夹…",
+    "folderName": "文件夹名称",
+    "parentFolder": "父文件夹",
+    "newFolder": "在当前自建目录下新建文件夹",
+    "newFolderAt": "在 {{path}} 下新建文件夹…",
+    "refresh": "刷新",
+    "saveFirst": "请先成功保存当前笔记。"
   }
 }

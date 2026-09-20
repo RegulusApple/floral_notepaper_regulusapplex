@@ -335,7 +335,7 @@ export function NotePad({
 
   const saveNote = useCallback(async () => {
     const existingCategory = notes.find((n) => n.id === editingNoteId)?.category ?? "";
-    const request = { title, content, category: existingCategory };
+    const request = { title, content, category: editingNoteId ? existingCategory : "tiles" };
     const note = editingNoteId
       ? await updateNote(editingNoteId, request)
       : await createNote(request);
@@ -347,7 +347,7 @@ export function NotePad({
       const next = exists
         ? current.map((item) => (item.id === note.id ? metadata : item))
         : [metadata, ...current];
-      return [...next].sort((left, right) => right.updatedAt.localeCompare(left.updatedAt));
+      return [...next].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
     });
     const contentChanged = contentValueRef.current !== content || titleValueRef.current !== title;
     setStatus(contentChanged ? "dirty" : "saved");

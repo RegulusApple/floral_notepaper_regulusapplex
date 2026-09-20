@@ -8,6 +8,10 @@ use std::{
 };
 use uuid::Uuid;
 
+mod library;
+use library::STORAGE_LOCK;
+pub use library::{PeriodNoteRequest, RecordType};
+
 #[cfg(target_os = "macos")]
 const DEFAULT_MACOS_GLOBAL_SHORTCUT: &str = "Command+Option+N";
 #[cfg(target_os = "macos")]
@@ -112,6 +116,10 @@ pub struct NoteMetadata {
     pub file_name: String,
     #[serde(default)]
     pub category: String,
+    #[serde(default)]
+    pub record_type: RecordType,
+    #[serde(default)]
+    pub record_period: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub word_count: usize,
@@ -126,6 +134,10 @@ pub struct Note {
     pub file_name: String,
     #[serde(default)]
     pub category: String,
+    #[serde(default)]
+    pub record_type: RecordType,
+    #[serde(default)]
+    pub record_period: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
     pub word_count: usize,
@@ -255,7 +267,7 @@ fn default_data_dir() -> Result<PathBuf, AppError> {
         return Ok(dir.join("花笺-RegulusApplEx"));
     }
 
-    Ok(env::current_dir()?.join("data"))
+    Ok(env::current_dir()?.join("floral-notepaper-regulusapplex-data"))
 }
 
 fn resolve_data_dir(config_dir: &Path) -> Result<PathBuf, AppError> {
@@ -322,7 +334,13 @@ fn data_dir_from_notes_dir(notes_dir: &str) -> PathBuf {
     path.to_path_buf()
 }
 
-const DATA_DIR_ITEMS: [&str; 4] = ["metadata.json", "notes", "images", "backgrounds"];
+const DATA_DIR_ITEMS: [&str; 5] = [
+    "metadata.json",
+    "metadata.backup.json",
+    "notes",
+    "images",
+    "backgrounds",
+];
 
 // 旧版无论 notesDir 指向哪里，metadata.json、images、backgrounds 都固定存放在旧主目录；
 // 数据目录解析到其他位置时必须一并带走，否则笔记内图片引用全部失效、created_at 丢失
@@ -557,9 +575,11 @@ fn paths_refer_to_same_entry(first: &Path, second: &Path) -> bool {
 }
 
 fn known_data_migration_candidates() -> Vec<PathBuf> {
-    known_data_migration_candidates_for(env::var("HOME").ok(), env::var("USERPROFILE").ok())
+    // This private fork starts empty. Never discover or import release data.
+    Vec::new()
 }
 
+#[cfg(test)]
 fn known_data_migration_candidates_for(
     home: Option<String>,
     userprofile: Option<String>,
@@ -719,7 +739,7 @@ impl NoteStore {
         config.data_dir = Some(self.data_dir.to_string_lossy().to_string());
         config.tab_indent_size = config.tab_indent_size.clamp(1, 8);
         write_json_atomic(&path, &config)?;
-        fs::create_dir_all(self.data_dir.join("notes"))?;
+        self.ensure_library_dirs()?;
         if self.migrate_macos_shortcut_default(&mut config)? {
             write_json_atomic(&path, &config)?;
         }
@@ -731,151 +751,26 @@ impl NoteStore {
         config.data_dir = Some(self.data_dir.to_string_lossy().to_string());
         config.tab_indent_size = config.tab_indent_size.clamp(1, 8);
         is_safe_data_dir(&self.data_dir)?;
-        fs::create_dir_all(self.data_dir.join("notes"))?;
+        self.ensure_library_dirs()?;
         write_json_atomic(&self.config_path(), &config)?;
         Ok(config)
     }
 
-    pub fn list_notes(&self) -> Result<Vec<NoteMetadata>, AppError> {
-        self.ensure_storage()?;
-        let mut metadata = self.load_metadata()?.notes;
-        metadata.retain(|note| {
-            self.note_path_in_category(&note.file_name, &note.category)
-                .exists()
-        });
-        metadata.sort_by_key(|note| std::cmp::Reverse(note.updated_at));
-        Ok(metadata)
-    }
-
-    pub fn read_note(&self, id: &str) -> Result<Note, AppError> {
-        self.ensure_storage()?;
-        let metadata = self.find_metadata(id)?;
-        let content = fs::read_to_string(
-            self.note_path_in_category(&metadata.file_name, &metadata.category),
-        )?;
-        Ok(Note {
-            id: metadata.id,
-            title: metadata.title,
-            file_name: metadata.file_name,
-            category: metadata.category,
-            created_at: metadata.created_at,
-            updated_at: metadata.updated_at,
-            word_count: metadata.word_count,
-            content,
-        })
-    }
-
-    pub fn create_note(&self, request: SaveNoteRequest) -> Result<Note, AppError> {
-        self.ensure_storage()?;
-        let id = Uuid::new_v4().to_string();
-        let now = Utc::now();
-        let file_name = self.file_name_for(&id, &request.title);
-        let word_count = count_words(&request.content);
-        let category = request.category.clone();
-        let note_path = self.note_path_in_category(&file_name, &category);
-        if let Some(parent) = note_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        let metadata = NoteMetadata {
-            id: id.clone(),
-            title: request.title,
-            file_name: file_name.clone(),
-            category: category.clone(),
-            created_at: now,
-            updated_at: now,
-            word_count,
-            preview: preview(&request.content),
-        };
-
-        fs::write(&note_path, &request.content)?;
-        let mut metadata_file = self.load_metadata()?;
-        metadata_file.notes.push(metadata.clone());
-        self.save_metadata(&metadata_file)?;
-
-        Ok(Note {
-            id,
-            title: metadata.title,
-            file_name,
-            category,
-            created_at: now,
-            updated_at: now,
-            word_count,
-            content: request.content,
-        })
-    }
-
-    pub fn update_note(&self, id: &str, request: SaveNoteRequest) -> Result<Note, AppError> {
-        self.ensure_storage()?;
-        let mut metadata_file = self.load_metadata()?;
-        let note = metadata_file
-            .notes
-            .iter_mut()
-            .find(|note| note.id == id)
-            .ok_or_else(|| AppError::note_not_found(id))?;
-
-        let old_file_name = note.file_name.clone();
-        let old_category = note.category.clone();
-        let new_file_name = self.file_name_for(id, &request.title);
-        let new_category = request.category.clone();
-        let now = Utc::now();
-        let word_count = count_words(&request.content);
-
-        let new_path = self.note_path_in_category(&new_file_name, &new_category);
-        if let Some(parent) = new_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        fs::write(&new_path, &request.content)?;
-        let old_path = self.note_path_in_category(&old_file_name, &old_category);
-        let replaced_path =
-            (old_file_name != new_file_name || old_category != new_category).then_some(old_path);
-
-        note.title = request.title;
-        note.file_name = new_file_name.clone();
-        note.category = new_category.clone();
-        note.updated_at = now;
-        note.word_count = word_count;
-        note.preview = preview(&request.content);
-
-        let result = Note {
-            id: note.id.clone(),
-            title: note.title.clone(),
-            file_name: note.file_name.clone(),
-            category: new_category,
-            created_at: note.created_at,
-            updated_at: note.updated_at,
-            word_count: note.word_count,
-            content: request.content,
-        };
-
-        self.save_metadata(&metadata_file)?;
-
-        // A title/category change replaces the storage path; it is not a user
-        // deletion. The new file and metadata are already durable, so cleanup
-        // of the stale copy must not turn a successful save into "保存失败".
-        // Canonical comparison also prevents a case-only rename on Windows
-        // from deleting the newly written file through its old spelling.
-        if let Some(old_path) = replaced_path {
-            if old_path.exists() && !paths_refer_to_same_entry(&old_path, &new_path) {
-                let _ = recycle_path(&old_path);
-            }
-        }
-        Ok(result)
-    }
-
     pub fn delete_note(&self, id: &str) -> Result<(), AppError> {
+        let _guard = STORAGE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         self.ensure_storage()?;
-        let mut metadata_file = self.load_metadata()?;
-        let index = metadata_file
+        let mut metadata = self.reconcile_metadata()?;
+        let index = metadata
             .notes
             .iter()
-            .position(|note| note.id == id)
+            .position(|n| n.id == id)
             .ok_or_else(|| AppError::note_not_found(id))?;
-        let metadata = metadata_file.notes.remove(index);
-        let path = self.note_path_in_category(&metadata.file_name, &metadata.category);
+        let note = metadata.notes.remove(index);
+        let path = self.checked_note_path(&note.file_name, &note.category)?;
         if path.exists() {
             recycle_path(&path)?;
         }
-        self.save_metadata(&metadata_file)?;
+        self.save_metadata(&metadata)?;
         let _ = self.delete_note_images(id);
         Ok(())
     }
@@ -975,154 +870,6 @@ impl NoteStore {
         }
         fs::write(path, note.content)?;
         Ok(())
-    }
-
-    pub fn list_categories(&self) -> Result<Vec<String>, AppError> {
-        let notes_dir = self.notes_dir();
-        fs::create_dir_all(&notes_dir)?;
-        let mut categories = Vec::new();
-        for entry in fs::read_dir(&notes_dir)? {
-            let entry = entry?;
-            if entry.path().is_dir() {
-                categories.push(entry.file_name().to_string_lossy().to_string());
-            }
-        }
-        categories.sort();
-        Ok(categories)
-    }
-
-    pub fn create_category(&self, name: &str) -> Result<(), AppError> {
-        let name = name.trim();
-        if name.is_empty() {
-            return Err(AppError::category_name_empty());
-        }
-        if name.contains('/') || name.contains('\\') || name.contains(':') || name.contains("..") {
-            return Err(AppError::category_name_invalid_chars());
-        }
-        let notes_dir = self.notes_dir();
-        let path = notes_dir.join(name);
-        fs::create_dir_all(&path)?;
-        Ok(())
-    }
-
-    pub fn rename_category(&self, old_name: &str, new_name: &str) -> Result<(), AppError> {
-        let new_name = new_name.trim();
-        if new_name.is_empty() {
-            return Err(AppError::category_name_empty());
-        }
-        if new_name.contains('/')
-            || new_name.contains('\\')
-            || new_name.contains(':')
-            || new_name.contains("..")
-        {
-            return Err(AppError::category_name_invalid_chars());
-        }
-        let notes_dir = self.notes_dir();
-        let old_path = notes_dir.join(old_name);
-        let new_path = notes_dir.join(new_name);
-        if !old_path.exists() {
-            return Err(AppError::category_not_found(old_name));
-        }
-        if new_path.exists() {
-            return Err(AppError::category_already_exists(new_name));
-        }
-        fs::rename(&old_path, &new_path)?;
-
-        let mut metadata_file = self.load_metadata()?;
-        for note in &mut metadata_file.notes {
-            if note.category == old_name {
-                note.category = new_name.to_string();
-            }
-        }
-        self.save_metadata(&metadata_file)?;
-        Ok(())
-    }
-
-    pub fn delete_category(&self, name: &str) -> Result<(), AppError> {
-        let notes_dir = self.notes_dir();
-        let category_path = notes_dir.join(name);
-        let dir_exists = category_path.exists();
-
-        if dir_exists {
-            // Safety: ensure the category path is actually inside notes_dir
-            let canon_notes = fs::canonicalize(&notes_dir).unwrap_or_else(|_| notes_dir.clone());
-            let canon_cat =
-                fs::canonicalize(&category_path).unwrap_or_else(|_| category_path.clone());
-            if !canon_cat.starts_with(&canon_notes) || canon_cat == canon_notes {
-                return Err(AppError::new(
-                    "unsafePath",
-                    format!(
-                        "拒绝删除「{}」：路径不在数据目录内",
-                        category_path.display()
-                    ),
-                ));
-            }
-
-            // Move all notes in this category to uncategorized (root)
-            let mut metadata_file = self.load_metadata()?;
-            for note in &mut metadata_file.notes {
-                if note.category == name {
-                    let old_path = category_path.join(&note.file_name);
-                    let new_path = notes_dir.join(&note.file_name);
-                    if old_path.exists() {
-                        fs::rename(&old_path, &new_path)?;
-                    }
-                    note.category = String::new();
-                }
-            }
-            self.save_metadata(&metadata_file)?;
-
-            // Move to recycle bin instead of permanent deletion.
-            recycle_path(&category_path)?;
-        } else {
-            // Directory already gone (manually deleted outside the app);
-            // clean up any stale metadata references.
-            let mut metadata_file = self.load_metadata()?;
-            let mut changed = false;
-            for note in &mut metadata_file.notes {
-                if note.category == name {
-                    note.category = String::new();
-                    changed = true;
-                }
-            }
-            if changed {
-                self.save_metadata(&metadata_file)?;
-            }
-        }
-        Ok(())
-    }
-
-    pub fn move_note_to_category(
-        &self,
-        id: &str,
-        new_category: &str,
-    ) -> Result<NoteMetadata, AppError> {
-        self.ensure_storage()?;
-        let mut metadata_file = self.load_metadata()?;
-        let note = metadata_file
-            .notes
-            .iter_mut()
-            .find(|note| note.id == id)
-            .ok_or_else(|| AppError::note_not_found(id))?;
-
-        let old_category = note.category.clone();
-        if old_category == new_category {
-            return Ok(note.clone());
-        }
-
-        let old_path = self.note_path_in_category(&note.file_name, &old_category);
-        let new_path = self.note_path_in_category(&note.file_name, new_category);
-        if let Some(parent) = new_path.parent() {
-            fs::create_dir_all(parent)?;
-        }
-        if old_path.exists() {
-            fs::rename(&old_path, &new_path)?;
-        }
-
-        note.category = new_category.to_string();
-        let result = note.clone();
-        self.save_metadata(&metadata_file)?;
-        Ok(result)
     }
 
     fn default_config(&self) -> AppConfig {
@@ -1283,32 +1030,15 @@ impl NoteStore {
 
     fn ensure_storage(&self) -> Result<(), AppError> {
         self.ensure_data_dir()?;
-        let _config = self.load_config()?;
-        fs::create_dir_all(self.notes_dir())?;
-        if !self.metadata_path().exists() {
-            let metadata = self.rebuild_metadata()?;
-            self.save_metadata(&metadata)?;
-        } else {
-            let metadata = self.load_metadata()?;
-            if metadata.notes.is_empty() && self.notes_dir_has_md_files() {
-                let rebuilt = self.rebuild_metadata()?;
-                self.save_metadata(&rebuilt)?;
-            }
-        }
+        self.load_config()?;
+        self.ensure_library_dirs()?;
+        // An empty index is intentional: unknown Markdown is never auto-imported.
+        self.load_metadata()?;
         Ok(())
     }
 
     fn notes_dir(&self) -> PathBuf {
         self.data_dir.join("notes")
-    }
-
-    fn note_path_in_category(&self, file_name: &str, category: &str) -> PathBuf {
-        let notes_dir = self.notes_dir();
-        if category.is_empty() {
-            notes_dir.join(file_name)
-        } else {
-            notes_dir.join(category).join(file_name)
-        }
     }
 
     fn find_metadata(&self, id: &str) -> Result<NoteMetadata, AppError> {
@@ -1328,120 +1058,8 @@ impl NoteStore {
         }
     }
 
-    fn load_metadata(&self) -> Result<MetadataFile, AppError> {
-        self.ensure_data_dir()?;
-        let path = self.metadata_path();
-        if !path.exists() {
-            let rebuilt = self.rebuild_metadata()?;
-            self.save_metadata(&rebuilt)?;
-            return Ok(rebuilt);
-        }
-
-        match serde_json::from_str(&fs::read_to_string(&path)?) {
-            Ok(metadata) => Ok(metadata),
-            Err(_) => {
-                // 备份损坏文件再重建：rebuild 从文件系统推断 created_at / 分类，
-                // 与原始数据可能不一致，保留原件供事后取证分析
-                let corrupt_name = format!(
-                    "metadata.corrupt-{}.json",
-                    Utc::now().format("%Y%m%d%H%M%S")
-                );
-                if let Err(error) = fs::rename(&path, self.data_dir.join(&corrupt_name)) {
-                    eprintln!(
-                        "failed to back up corrupt metadata {}: {error}",
-                        path.display()
-                    );
-                }
-                let rebuilt = self.rebuild_metadata()?;
-                self.save_metadata(&rebuilt)?;
-                Ok(rebuilt)
-            }
-        }
-    }
-
-    fn save_metadata(&self, metadata: &MetadataFile) -> Result<(), AppError> {
-        self.ensure_data_dir()?;
-        write_json_atomic(&self.metadata_path(), metadata)
-    }
-
-    fn notes_dir_has_md_files(&self) -> bool {
-        // 递归扫描：笔记按分类存放在子目录中（notes/工作/x.md），
-        // 只看根目录会漏掉所有已分类笔记，导致 rebuild_metadata 被错误跳过
-        fn dir_has_md(dir: &Path) -> bool {
-            let Ok(entries) = fs::read_dir(dir) else {
-                return false;
-            };
-            entries.filter_map(|e| e.ok()).any(|entry| {
-                let path = entry.path();
-                if path.is_dir() {
-                    dir_has_md(&path)
-                } else {
-                    path.extension().and_then(|ext| ext.to_str()) == Some("md")
-                }
-            })
-        }
-        dir_has_md(&self.notes_dir())
-    }
-
-    fn rebuild_metadata(&self) -> Result<MetadataFile, AppError> {
-        let notes_dir = self.notes_dir();
-        fs::create_dir_all(&notes_dir)?;
-        let mut notes = Vec::new();
-
-        self.scan_dir_for_notes(&notes_dir, "", &mut notes)?;
-
-        for entry in fs::read_dir(&notes_dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.is_dir() {
-                let category = entry.file_name().to_string_lossy().to_string();
-                self.scan_dir_for_notes(&path, &category, &mut notes)?;
-            }
-        }
-
-        Ok(MetadataFile { notes })
-    }
-
-    fn scan_dir_for_notes(
-        &self,
-        dir: &Path,
-        category: &str,
-        notes: &mut Vec<NoteMetadata>,
-    ) -> Result<(), AppError> {
-        for entry in fs::read_dir(dir)? {
-            let entry = entry?;
-            let path = entry.path();
-            if path.extension().and_then(|extension| extension.to_str()) != Some("md") {
-                continue;
-            }
-
-            let file_name = entry.file_name().to_string_lossy().to_string();
-            let Some(id) = id_from_file_name(&file_name) else {
-                continue;
-            };
-            let content = fs::read_to_string(&path).unwrap_or_default();
-            let title = infer_title(&file_name, &content);
-            let modified = entry
-                .metadata()
-                .and_then(|metadata| metadata.modified())
-                .map(DateTime::<Utc>::from)
-                .unwrap_or_else(|_| Utc::now());
-
-            notes.push(NoteMetadata {
-                id,
-                title,
-                file_name,
-                category: category.to_string(),
-                created_at: modified,
-                updated_at: modified,
-                word_count: count_words(&content),
-                preview: preview(&content),
-            });
-        }
-        Ok(())
-    }
-
     pub fn migrate_data_to(&self, new_data_dir: &Path) -> Result<NoteStore, AppError> {
+        let _guard = STORAGE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         is_safe_data_dir(new_data_dir)?;
         let canonical_new = canonical_for_compare(new_data_dir);
         let canonical_current = canonical_for_compare(&self.data_dir);
@@ -1456,9 +1074,15 @@ impl NoteStore {
                 "新数据目录不能位于当前数据目录内部，请选择其他位置",
             ));
         }
+        if new_data_dir.exists() && fs::read_dir(new_data_dir)?.next().is_some() {
+            return Err(AppError::new(
+                "dataDirNotEmpty",
+                "目标数据目录非空，不能覆盖已有数据",
+            ));
+        }
         fs::create_dir_all(new_data_dir)?;
 
-        // 第一阶段：只复制不删除。中途失败时源数据完好、配置不变，重试时覆盖续传
+        // 第一阶段：只复制不删除。中途失败时源数据完好、配置不变。
         for item in DATA_DIR_ITEMS {
             let src = self.data_dir.join(item);
             let dst = new_data_dir.join(item);
@@ -1628,21 +1252,6 @@ fn id_from_file_name(file_name: &str) -> Option<String> {
             .map(|(id, _)| id.to_string())
             .unwrap_or_else(|| stem.to_string()),
     )
-}
-
-fn infer_title(file_name: &str, content: &str) -> String {
-    if let Some(title) = content
-        .lines()
-        .find_map(|line| line.trim().strip_prefix("# ").map(str::trim))
-        .filter(|title| !title.is_empty())
-    {
-        return title.to_string();
-    }
-
-    let stem = file_name.strip_suffix(".md").unwrap_or(file_name);
-    stem.split_once('_')
-        .map(|(_, title)| title.replace('_', " "))
-        .unwrap_or_default()
 }
 
 fn is_markdown_path(path: &Path) -> bool {
@@ -1827,6 +1436,66 @@ mod tests {
     }
 
     #[test]
+    fn private_templates_remain_ordinary_notes_after_reopen() {
+        assert!(known_data_migration_candidates().is_empty());
+        let store = test_store("private-template-roundtrip");
+        store.create_category("工作").unwrap();
+        let content = "# 2026-W38 周小结\n\n## 本周完成\n\n手动记录\n";
+        let request = SaveNoteRequest {
+            title: "2026-W38 周小结".into(),
+            content: content.into(),
+            category: "工作".into(),
+        };
+        let first = store.create_note(request.clone()).unwrap();
+        let second = store.create_note(request).unwrap();
+        assert_ne!(first.id, second.id);
+        assert_ne!(first.file_name, second.file_name);
+        let reopened = NoteStore::new(store.config_dir.clone(), store.data_dir.clone());
+        assert_eq!(reopened.read_note(&first.id).unwrap().content, content);
+        assert_eq!(reopened.read_note(&first.id).unwrap().category, "工作");
+        let edited = reopened
+            .update_note(
+                &first.id,
+                SaveNoteRequest {
+                    title: "手动重命名".into(),
+                    content: format!("{content}\n继续编辑"),
+                    category: "工作".into(),
+                },
+            )
+            .unwrap();
+        assert!(reopened
+            .read_note(&first.id)
+            .unwrap()
+            .content
+            .ends_with("继续编辑"));
+        reopened.move_note_to_category(&edited.id, "").unwrap();
+        assert!(reopened.read_note(&edited.id).unwrap().category.is_empty());
+        reopened.delete_note(&edited.id).unwrap();
+        assert_eq!(reopened.list_notes().unwrap().len(), 1);
+        assert!(store.metadata_path().is_file());
+        assert!(!store.data_dir.join("reports").exists());
+    }
+
+    #[test]
+    fn data_migration_rejects_existing_destination_without_changes() {
+        let store = test_store("private-migration-nonempty");
+        let root = test_root("private-migration-sibling");
+        let target = root.join("existing");
+        fs::create_dir_all(&target).unwrap();
+        fs::write(target.join("metadata.json"), "DO NOT CHANGE").unwrap();
+        let error = store.migrate_data_to(&target).unwrap_err();
+        assert_eq!(error.code, "dataDirNotEmpty");
+        assert_eq!(
+            fs::read_to_string(target.join("metadata.json")).unwrap(),
+            "DO NOT CHANGE"
+        );
+        assert_eq!(
+            store.load_config().unwrap().data_dir.as_deref(),
+            Some(store.data_dir.to_str().unwrap())
+        );
+    }
+
+    #[test]
     fn rebuilds_metadata_when_metadata_json_is_corrupt() {
         let store = test_store("repair");
         let first = store
@@ -1943,7 +1612,11 @@ mod tests {
             Some(r"C:\Users\Alice".into()),
         );
 
-        assert!(candidates.contains(&PathBuf::from("/Users/alice").join("Documents").join("花笺-RegulusApplEx")));
+        assert!(candidates.contains(
+            &PathBuf::from("/Users/alice")
+                .join("Documents")
+                .join("花笺-RegulusApplEx")
+        ));
         assert!(candidates.contains(
             &PathBuf::from("/Users/alice")
                 .join("Library")

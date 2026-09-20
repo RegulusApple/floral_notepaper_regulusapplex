@@ -8,6 +8,9 @@ const INITIAL_DELAY: Duration = Duration::from_secs(3);
 const POLL_INTERVAL: Duration = Duration::from_secs(60);
 
 pub fn start_auto_check_scheduler(app: AppHandle) {
+    if !super::IN_APP_UPDATES_ENABLED {
+        return;
+    }
     thread::spawn(move || {
         thread::sleep(INITIAL_DELAY);
 

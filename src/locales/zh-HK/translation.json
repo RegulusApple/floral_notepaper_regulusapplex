@@ -26,6 +26,31 @@
     "wordCount": "{{count}} 字",
     "wordCountUnit": "字"
   },
+  "noteTemplates": {
+    "diary": {
+      "name": "日記",
+      "title": "{{period}} 日記",
+      "record": "今日記錄",
+      "problems": "遇到的問題",
+      "plan": "明日計劃"
+    },
+    "weekly": {
+      "name": "週小結",
+      "title": "{{period}} 週小結",
+      "completed": "本週完成",
+      "problems": "本週問題",
+      "plan": "下週計劃",
+      "reflection": "復盤"
+    },
+    "monthly": {
+      "name": "月報",
+      "title": "{{period}} 月報",
+      "completed": "本月完成",
+      "achievements": "本月成果",
+      "improvements": "問題與改進",
+      "plan": "下月計劃"
+    }
+  },
   "contextMenu": {
     "edit": {
       "copy": "複製",
@@ -41,6 +66,7 @@
     }
   },
   "errors": {
+    "dataDirNotEmpty": "目標資料目錄非空，請選擇一個空目錄，避免覆寫已有資料。",
     "categoryAlreadyExists": "分類「{{category}}」已存在",
     "categoryNameEmpty": "分類名稱不能為空",
     "categoryNameInvalidChars": "分類名稱不能包含特殊字元",
@@ -54,7 +80,15 @@
     "unsupportedFile": "僅支援匯入 .md 檔案",
     "unsupportedImageFormat": "不支援的圖片格式",
     "unsupportedShortcut": "{{field}} 配置無效",
-    "unsupportedShortcutGeneric": "快捷鍵配置無效"
+    "unsupportedShortcutGeneric": "快捷鍵配置無效",
+    "recordPeriodInvalid": "日期或週期無效，請重新選擇。",
+    "recordPeriodConflict": "該週期已有記錄，請開啟已有筆記；未修改任何內容。",
+    "systemFolderProtected": "系統歸檔目錄受保護，請選擇自建目錄或磁貼目錄。",
+    "folderNotEmpty": "只能刪除空資料夾，請先移動其中的檔案和子資料夾。",
+    "fileAlreadyExists": "目標檔案已存在，未覆蓋原檔案。",
+    "relativeImageMove": "筆記含非應用程式管理的相對圖片引用。請先匯入圖片或改用絕對連結，再移動檔案。",
+    "metadataRecoveryRequired": "筆記索引和備份無法讀取。Markdown 檔案仍保留，請先備份資料並還原索引；不會自動收錄未知檔案。",
+    "unsafePath": "該路徑不安全：不能越過筆記根目錄、使用連結目錄或移入自身子目錄。"
   },
   "markdown": {
     "copied": "已複製",
@@ -72,9 +106,9 @@
     "category": {
       "confirmDelete": "確認刪除「{{category}}」？",
       "confirmDeleteAction": "確認刪除",
-      "delete": "刪除分類",
+      "delete": "刪除空資料夾",
       "emptyFolder": "空資料夾",
-      "new": "新增分類",
+      "new": "新增資料夾",
       "placeholder": "輸入分類名稱…",
       "rename": "重新命名",
       "uncategorized": "未分類"
@@ -163,7 +197,7 @@
   "noteMenu": {
     "delete": "刪除筆記",
     "export": "匯出 Markdown",
-    "moveToCategory": "移至分類…"
+    "moveToCategory": "移動到資料夾…"
   },
   "notepad": {
     "button": {
@@ -227,6 +261,7 @@
       "zhHK": "繁體中文"
     },
     "dataDir": "數據目錄",
+    "dataDirConfirmSubdir": "資料將存放在「{{dir}}」下的 floral-notepaper-regulusapplex 子資料夾中，是否繼續？",
     "openAtCursor": "快捷鍵開啟時跟隨滑鼠位置",
     "quickNoteShortcut": "快捷記錄快捷鍵",
     "rememberSurfaceSize": "記住小窗尺寸",
@@ -271,6 +306,7 @@
     "splitScrollSync": "分欄同步捲動",
     "title": "應用程式設定",
     "update": {
+      "privateBuild": "此私人版本尚未設定更新通道。應用程式內更新已暫停，請使用本專案建置的安裝包更新。",
       "advanced": "進階",
       "allowPrerelease": "允許預發佈版本",
       "autoCheck": "自動檢查更新",
@@ -422,5 +458,36 @@
   },
   "tile": {
     "empty": "空"
+  },
+  "library": {
+    "title": "筆記",
+    "allNotes": "全部筆記 · 預設位置",
+    "period": {
+      "week": "{{year}}年第{{week}}週",
+      "month": "{{year}}年{{month}}月",
+      "year": "{{year}}年"
+    },
+    "diary": "日記",
+    "weekly": "週小結",
+    "monthly": "月報",
+    "tiles": "磁貼筆記",
+    "expand": "展開 {{name}}",
+    "collapse": "收起 {{name}}",
+    "location": "位置：{{path}}",
+    "standardLocation": "標準歸檔：{{path}}",
+    "manageRecord": "加入／調整週期管理…",
+    "createRecord": "建立週期筆記",
+    "recordType": "記錄類型",
+    "recordPeriod": "記錄日期／週期",
+    "periodHelp": "按所記錄的日期歸檔。週一至週日為一週，跨月週歸入週四所在的月份。每個週期只保留一篇，重複建立將開啟已有筆記。",
+    "moveToStandard": "同時移到標準歸檔目錄（不修改內文）",
+    "createOrOpen": "建立或開啟",
+    "renameMoveFolder": "重新命名／移動資料夾…",
+    "folderName": "資料夾名稱",
+    "parentFolder": "上層資料夾",
+    "newFolder": "在目前自建目錄下建立資料夾",
+    "newFolderAt": "在 {{path}} 下建立資料夾…",
+    "refresh": "重新整理",
+    "saveFirst": "請先成功儲存目前筆記。"
   }
 }

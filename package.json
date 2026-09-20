@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "node scripts/fetch-contributors.mjs && vite",
     "build": "node scripts/fetch-contributors.mjs && tsc && vite build",
+    "build:windows": "tauri build --target x86_64-pc-windows-msvc --bundles nsis --no-sign --ci",
     "test": "vitest run",
     "lint": "oxlint",
     "fmt": "oxfmt",
@@ -44,6 +45,7 @@
     "@types/react-dom": "^19.1.6",
     "@vitejs/plugin-react": "^6.0.2",
     "husky": "^9.1.7",
+    "jsdom": "^30.1.0",
     "lint-staged": "^17.0.5",
     "oxfmt": "^0.51.0",
     "oxlint": "^1.66.0",

@@ -11,6 +11,15 @@ interface SerializedAppError {
 type ErrorDetails = Record<string, string>;
 
 const LOCALIZED_ERROR_CODES = new Set([
+  "recordPeriodInvalid",
+  "recordPeriodConflict",
+  "systemFolderProtected",
+  "folderNotEmpty",
+  "fileAlreadyExists",
+  "relativeImageMove",
+  "metadataRecoveryRequired",
+  "unsafePath",
+  "dataDirNotEmpty",
   "categoryAlreadyExists",
   "categoryNameEmpty",
   "categoryNameInvalidChars",
@@ -33,6 +42,24 @@ export function getNote(id: string): Promise<Note> {
 
 export function createNote(request: SaveNoteRequest): Promise<Note> {
   return invoke("notes_create", { request });
+}
+
+export function createPeriodNote(request: {
+  recordType: "diary" | "weekly" | "monthly";
+  recordPeriod: string;
+  title: string;
+  content: string;
+}): Promise<Note> {
+  return invoke("notes_create_period", { request });
+}
+
+export function setNoteRecord(
+  id: string,
+  recordType: "diary" | "weekly" | "monthly",
+  recordPeriod: string,
+  moveToStandard: boolean,
+): Promise<Note> {
+  return invoke("notes_set_record", { id, recordType, recordPeriod, moveToStandard });
 }
 
 export function updateNote(id: string, request: SaveNoteRequest): Promise<Note> {
@@ -131,6 +158,15 @@ function getLocalizedAppErrorMessage(
   }
 
   switch (appError.code) {
+    case "recordPeriodInvalid":
+    case "recordPeriodConflict":
+    case "systemFolderProtected":
+    case "folderNotEmpty":
+    case "fileAlreadyExists":
+    case "relativeImageMove":
+    case "metadataRecoveryRequired":
+    case "unsafePath":
+      return translate(`errors.${appError.code}`);
     case "unsupportedFile":
       return translate("errors.unsupportedFile", { defaultValue: "只支持导入 .md 文件" });
     case "categoryNameEmpty":
@@ -157,6 +193,8 @@ function getLocalizedAppErrorMessage(
       });
     case "noteNotFound":
       return translate("errors.noteNotFound", { defaultValue: "找不到该笔记" });
+    case "dataDirNotEmpty":
+      return translate("errors.dataDirNotEmpty");
     case "duplicateShortcut":
       return translate("errors.duplicateShortcut", {
         defaultValue: "显示/隐藏窗口快捷键不能与呼出小窗快捷键重复",

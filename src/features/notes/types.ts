@@ -3,6 +3,8 @@ export interface NoteMetadata {
   title: string;
   fileName: string;
   category: string;
+  recordType?: "ordinary" | "diary" | "weekly" | "monthly";
+  recordPeriod?: string | null;
   createdAt: string;
   updatedAt: string;
   wordCount: number;

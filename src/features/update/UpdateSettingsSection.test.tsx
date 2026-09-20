@@ -8,6 +8,10 @@ import {
 } from "./UpdateSettingsSection";
 import type { UpdateSettings, UpdateState } from "./types";
 
+// Retain regression coverage for the upstream updater while the private build
+// has no release channel. The disabled production branch has its own tests.
+vi.mock("./availability", () => ({ IN_APP_UPDATES_ENABLED: true }));
+
 vi.mock("@tauri-apps/plugin-dialog", () => ({
   message: vi.fn(),
 }));

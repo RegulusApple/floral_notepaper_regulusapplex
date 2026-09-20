@@ -38,6 +38,20 @@ use uuid::Uuid;
 
 pub const APP_ID: &str = "com.regulusapplex.floral.notepaper";
 
+// Re-enable only after a private release channel and installer identity audit.
+pub const IN_APP_UPDATES_ENABLED: bool = false;
+
+pub(crate) fn ensure_updates_enabled() -> Result<(), AppError> {
+    if IN_APP_UPDATES_ENABLED {
+        Ok(())
+    } else {
+        Err(errors::app_error(
+            "updatePrivateBuild",
+            "私有版本尚未配置更新通道",
+        ))
+    }
+}
+
 pub(super) fn sha256_hex(path: &Path) -> Result<String, std::io::Error> {
     use sha2::{Digest, Sha256};
     use std::io::{BufReader, Read};
@@ -580,6 +594,14 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn private_build_rejects_update_execution() {
+        assert_eq!(
+            ensure_updates_enabled().unwrap_err().code,
+            "updatePrivateBuild"
+        );
+    }
     use crate::updater::types::{
         CheckSourcePreference, DownloadSourcePreference, UpdateChannel, UpdateSettingsDto,
         UpdateStateDto, UpdateStatus,

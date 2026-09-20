@@ -6,12 +6,16 @@
 
 <img src="./src-tauri/icons/icon.png" width="120" alt="花笺图标">
 
-# 花笺 RegulusApplEx
+# 花笺
 
 轻量、优雅、现代化的本地便签工具（RegulusApplEx 派生项目）<br>
 基于 Tauri 2 + React 构建
 
 本目录是基于 `floral-notepaper-main` 的独立派生工程，架构与实现解析见上级目录的 [floral-notepaper-main-architecture.md](../floral-notepaper-main-architecture.md)。
+
+私有版本的模板功能、数据隔离与 Windows x64 构建说明见 [开发说明](Docs/private-development.md)。下方原项目的链接保留用于来源说明，不代表本项目的发布通道。
+
+自建多级文件夹、日记／周小结／月报管理的使用和实现说明见 [笔记目录与周期管理](Docs/note-library.md)。
 
 [反馈问题](https://github.com/Achilng/floral-notepaper/issues) · [更新日志](https://github.com/Achilng/floral-notepaper/releases) <br>
 [快速开始](#快速开始) · [FAQ](https://github.com/Achilng/floral-notepaper/wiki) · [构建指南](#从源码构建)

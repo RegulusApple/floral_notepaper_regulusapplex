@@ -25,21 +25,28 @@
 }
 
 @theme {
-  --color-paper: #f6f3ec;
-  --color-paper-warm: #f0ebe0;
-  --color-paper-deep: #e8e1d3;
-  --color-ink: #1a1a18;
-  --color-ink-soft: #3d3d38;
-  --color-ink-faint: #8a8a80;
-  --color-ink-ghost: #b8b8ae;
-  --color-bamboo: #2d5a3d;
-  --color-bamboo-light: #3a7a52;
-  --color-bamboo-mist: #e8f0eb;
-  --color-bamboo-glow: #d4e8da;
-  --color-stone: #6b6b62;
+  --color-paper: #fbfaf4;
+  --color-paper-warm: #f5f4eb;
+  --color-paper-deep: #c8bed9;
+  --color-ink: #332b45;
+  --color-ink-soft: #332b45;
+  --color-ink-faint: #7561a8;
+  --color-ink-ghost: #81798e;
+  /* Retain the existing accent utility names across all application surfaces. */
+  --color-bamboo: #4d377c;
+  --color-bamboo-light: #7561a8;
+  --color-bamboo-mist: #eee9f7;
+  --color-bamboo-glow: #e3daf3;
+  --color-stone: #81798e;
   --color-cloud: #ffffff;
-  --color-shadow: rgba(26, 26, 24, 0.06);
-  --color-shadow-deep: rgba(26, 26, 24, 0.12);
+  --color-panel: rgba(255, 255, 255, 0.74);
+  --color-purple-deep: #2f214d;
+  --color-green: #afd52d;
+  --color-green-soft: #e5f2a9;
+  --color-orange: #eb896f;
+  --color-line: rgba(77, 55, 124, 0.16);
+  --color-shadow: rgba(77, 55, 124, 0.09);
+  --color-shadow-deep: rgba(77, 55, 124, 0.16);
   --color-danger-bg: #fef2f2;
 
   --font-display:
@@ -53,27 +60,53 @@
 }
 
 :root {
-  --app-window-radius: 14px;
+  --app-window-radius: 11px;
   --app-surface-radius: 14px;
+  --paper: var(--color-paper);
+  --paper-warm: var(--color-paper-warm);
+  --panel: var(--color-panel);
+  --purple: var(--color-bamboo);
+  --purple-deep: var(--color-purple-deep);
+  --purple-soft: var(--color-bamboo-light);
+  --green: var(--color-green);
+  --green-soft: var(--color-green-soft);
+  --orange: var(--color-orange);
+  --ink: var(--color-ink);
+  --muted: var(--color-ink-ghost);
+  --line: var(--color-line);
+  --shadow: 0 18px 50px rgba(77, 55, 124, 0.09);
+  /* Coral and lime stay legible for small metadata and status text. */
+  --date-ink: color-mix(in srgb, var(--orange) 55%, var(--ink));
+  --status-ink: color-mix(in srgb, var(--green) 35%, var(--ink));
 }
 
 :root[data-theme="dark"] {
-  --color-paper: #222120;
-  --color-paper-warm: #2c2a27;
-  --color-paper-deep: #3c3935;
-  --color-ink: #e5e1da;
-  --color-ink-soft: #b5b1a8;
-  --color-ink-faint: #928f87;
-  --color-ink-ghost: #706d67;
-  --color-bamboo: #4faa70;
-  --color-bamboo-light: #5fc085;
-  --color-bamboo-mist: #1c2e22;
-  --color-bamboo-glow: #243a2c;
-  --color-stone: #8a8880;
-  --color-cloud: #1a1917;
-  --color-shadow: rgba(0, 0, 0, 0.3);
-  --color-shadow-deep: rgba(0, 0, 0, 0.5);
+  --color-paper: #211b35;
+  --color-paper-warm: #2a2341;
+  --color-paper-deep: #75658f;
+  --color-ink: #eee8fa;
+  --color-ink-soft: #eee8fa;
+  --color-ink-faint: #a896dc;
+  --color-ink-ghost: #b6acc9;
+  --color-bamboo: #c6b5f4;
+  --color-bamboo-light: #a896dc;
+  --color-bamboo-mist: #3f335e;
+  --color-bamboo-glow: #51406f;
+  --color-stone: #b6acc9;
+  --color-cloud: #211b35;
+  --color-panel: rgba(43, 35, 66, 0.86);
+  --color-purple-deep: #f0eaff;
+  --color-green: #c4e956;
+  --color-green-soft: #4e5c36;
+  --color-orange: #f1a38e;
+  --color-line: rgba(222, 211, 255, 0.18);
+  --color-shadow: rgba(10, 7, 20, 0.25);
+  --color-shadow-deep: rgba(10, 7, 20, 0.4);
   --color-danger-bg: rgba(220, 38, 38, 0.15);
+  --shadow: 0 18px 50px rgba(10, 7, 20, 0.25);
+  --date-ink: var(--orange);
+  --status-ink: var(--green);
+  color-scheme: dark;
 }
 
 /* Theme transition — applied briefly during theme switch for a uniform crossfade */
@@ -136,10 +169,116 @@ body {
 
 .app-main-frame {
   border-radius: var(--app-window-radius);
+  overflow: hidden;
+  background: var(--paper);
 }
 
 .app-surface-frame {
   border-radius: var(--app-surface-radius);
+}
+
+.main-sidebar {
+  background: var(--paper-warm);
+  border-color: var(--line);
+}
+
+.main-editor {
+  background: var(--panel);
+}
+
+/* Keep the user's existing background image and overlay controls authoritative. */
+.app-main-frame[data-custom-background="true"] .main-sidebar {
+  background: color-mix(in srgb, var(--paper) 40%, transparent);
+}
+
+.app-main-frame[data-custom-background="true"] .main-editor {
+  background: transparent;
+}
+
+.library-header-action {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 4px;
+  color: var(--muted);
+  opacity: 0.4;
+  cursor: pointer;
+  transition:
+    color 150ms,
+    opacity 150ms,
+    background-color 150ms;
+}
+
+.library-header:hover .library-header-action,
+.library-header:focus-within .library-header-action {
+  opacity: 1;
+}
+
+.library-header-action:hover {
+  color: var(--purple);
+  background: var(--color-bamboo-mist);
+}
+
+.note-library button:focus-visible,
+.library-header button:focus-visible {
+  outline: 2px solid var(--green);
+  outline-offset: -2px;
+}
+
+.library-note-row {
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 55%, transparent);
+}
+
+.library-branch-line {
+  border-left: 1px solid var(--line);
+}
+
+.library-folder-chevron {
+  transform: rotate(0deg);
+  transition: transform 200ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.library-folder-chevron.is-open {
+  transform: rotate(90deg);
+}
+
+.library-folder-children {
+  display: grid;
+  grid-template-rows: 0fr;
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    grid-template-rows 210ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 180ms ease-out;
+}
+
+.library-folder-children.is-expanded {
+  grid-template-rows: 1fr;
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.library-folder-children-inner {
+  min-height: 0;
+  overflow: hidden;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .library-folder-chevron,
+  .library-folder-children {
+    transition-duration: 0ms;
+  }
+}
+
+.library-date {
+  color: var(--date-ink);
+}
+
+.saved-status {
+  color: var(--status-ink);
 }
 
 .mac-window-controls {

@@ -32,7 +32,7 @@ fn temporary_json_path(path: &Path) -> PathBuf {
         .file_name()
         .and_then(|name| name.to_str())
         .unwrap_or("state.json");
-    path.with_file_name(format!("{file_name}.tmp"))
+    path.with_file_name(format!("{file_name}.{}.tmp", uuid::Uuid::new_v4()))
 }
 
 #[cfg(not(target_os = "windows"))]

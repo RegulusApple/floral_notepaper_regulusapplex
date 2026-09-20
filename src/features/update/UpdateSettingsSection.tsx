@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { message } from "@tauri-apps/plugin-dialog";
 import { useTranslation } from "react-i18next";
+import { IN_APP_UPDATES_ENABLED } from "./availability";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 // MSIX installs are updated by the Microsoft Store; the About panel links
@@ -62,7 +63,19 @@ interface UpdateSettingsSectionProps {
 
 type IntervalOption = string;
 
-export function UpdateSettingsSection({
+export function UpdateSettingsSection(props: UpdateSettingsSectionProps) {
+  const { t } = useTranslation();
+  if (!IN_APP_UPDATES_ENABLED) {
+    return (
+      <section className="space-y-3 pt-2 border-t border-paper-deep/25">
+        <p className="text-[11px] text-ink-ghost">{t("settings.update.privateBuild")}</p>
+      </section>
+    );
+  }
+  return <EnabledUpdateSettingsSection {...props} />;
+}
+
+function EnabledUpdateSettingsSection({
   initialSettings,
   initialStatus,
   mode = "full",

@@ -411,7 +411,7 @@ use uuid::Uuid;
 use tauri::menu::Submenu;
 
 #[cfg(desktop)]
-use tauri_plugin_autostart::{MacosLauncher, ManagerExt as AutostartExt};
+use tauri_plugin_autostart::ManagerExt as AutostartExt;
 #[cfg(desktop)]
 use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Modifiers, Shortcut, ShortcutState};
 
@@ -1933,10 +1933,12 @@ pub(crate) fn mark_app_exiting(app: &AppHandle) {
 
 #[cfg(desktop)]
 fn setup_autostart_plugin(app: &AppHandle) -> tauri::Result<()> {
-    app.plugin(tauri_plugin_autostart::init(
-        MacosLauncher::LaunchAgent,
-        Some(vec!["--silent"]),
-    ))
+    app.plugin(
+        tauri_plugin_autostart::Builder::new()
+            .app_name("floral-notepaper-regulusapplex")
+            .args(["--silent"])
+            .build(),
+    )
 }
 
 #[cfg(not(desktop))]

@@ -32,6 +32,8 @@ export function metadataFromNote(note: Note): NoteMetadata {
     title: note.title,
     fileName: note.fileName,
     category: note.category,
+    recordType: note.recordType,
+    recordPeriod: note.recordPeriod,
     createdAt: note.createdAt,
     updatedAt: note.updatedAt,
     wordCount: note.wordCount,
@@ -92,7 +94,14 @@ export function filterNotes(notes: NoteMetadata[], query: string): NoteMetadata[
   if (!normalized) return notes;
 
   return notes.filter((note) => {
-    const haystack = [note.title, note.preview, note.fileName, getDisplayTitle(note)]
+    const haystack = [
+      note.title,
+      note.preview,
+      note.fileName,
+      note.category,
+      note.recordPeriod,
+      getDisplayTitle(note),
+    ]
       .join(" ")
       .toLowerCase();
     return haystack.includes(normalized);

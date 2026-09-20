@@ -6,6 +6,7 @@ pub mod updater;
 
 use locales::Locale;
 use services::notes::{default_store, AppConfig, AppError, Note, NoteMetadata, SaveNoteRequest};
+use services::notes::{PeriodNoteRequest, RecordType};
 use std::{env, fs, io::Write, path::PathBuf};
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -28,6 +29,27 @@ fn notes_get(id: String) -> Result<Note, AppError> {
 #[tauri::command]
 fn notes_create(app: AppHandle, request: SaveNoteRequest) -> Result<Note, AppError> {
     let note = default_store()?.create_note(request)?;
+    let _ = app.emit("notes-changed", ());
+    Ok(note)
+}
+
+#[tauri::command]
+fn notes_create_period(app: AppHandle, request: PeriodNoteRequest) -> Result<Note, AppError> {
+    let note = default_store()?.create_period_note(request)?;
+    let _ = app.emit("notes-changed", ());
+    Ok(note)
+}
+
+#[tauri::command]
+fn notes_set_record(
+    app: AppHandle,
+    id: String,
+    record_type: RecordType,
+    record_period: String,
+    move_to_standard: bool,
+) -> Result<Note, AppError> {
+    let note =
+        default_store()?.set_note_record(&id, record_type, &record_period, move_to_standard)?;
     let _ = app.emit("notes-changed", ());
     Ok(note)
 }
@@ -270,7 +292,7 @@ fn config_save(app: AppHandle, config: AppConfig) -> Result<AppConfig, AppError>
 #[tauri::command]
 fn config_migrate_data_dir(app: AppHandle, new_data_dir: String) -> Result<AppConfig, AppError> {
     let store = default_store()?;
-    let new_path = PathBuf::from(&new_data_dir).join("floral");
+    let new_path = PathBuf::from(&new_data_dir).join("floral-notepaper-regulusapplex");
     let new_store = store.migrate_data_to(&new_path)?;
 
     let scope = app.asset_protocol_scope();
@@ -404,7 +426,7 @@ fn print_cli_version() {
 fn print_cli_help() {
     let _ = writeln!(
         std::io::stdout(),
-        "floral-notepaper-regulusapplex {}\nFloral Notepaper RegulusApplEx - lightweight local note app\n\nUSAGE:\n    floral-notepaper-regulusapplex [OPTIONS]\n\nOPTIONS:\n    -V, --version\n            Print version\n    -h, --help\n            Print help",
+        "floral-notepaper-regulusapplex {}\nFloral Notepaper - lightweight local note app\n\nUSAGE:\n    floral-notepaper-regulusapplex [OPTIONS]\n\nOPTIONS:\n    -V, --version\n            Print version\n    -h, --help\n            Print help",
         env!("CARGO_PKG_VERSION"),
     );
     flush_attached_console_stdout();
@@ -472,6 +494,8 @@ pub fn run() {
             notes_list,
             notes_get,
             notes_create,
+            notes_create_period,
+            notes_set_record,
             notes_update,
             notes_delete,
             notes_import_markdown,

@@ -140,6 +140,24 @@ fn is_link(metadata: &fs::Metadata) -> bool {
     }
 }
 
+// Recognize the storage wrappers by their layout, not a blanket ban on folder
+// names. A user's ordinary notes/ or Projects/notes/ folder remains visible.
+fn is_storage_directory(path: &Path) -> bool {
+    let name = path.file_name().unwrap_or_default().to_string_lossy();
+    if ["images", "backgrounds"]
+        .iter()
+        .any(|name_| name.eq_ignore_ascii_case(name_))
+    {
+        return true;
+    }
+    let has_archive_roots = |dir: &Path| SYSTEM_ROOTS.iter().all(|root| dir.join(root).is_dir());
+    if name.eq_ignore_ascii_case("floral-notepaper-regulusapplex") {
+        return path.join("notes").is_dir()
+            && (path.join("metadata.json").is_file() || has_archive_roots(&path.join("notes")));
+    }
+    name.eq_ignore_ascii_case("notes") && has_archive_roots(path)
+}
+
 fn walk(
     dir: &Path,
     base: &Path,
@@ -229,6 +247,7 @@ fn note_from(metadata: NoteMetadata, content: String) -> Note {
 
 impl NoteStore {
     pub(super) fn ensure_library_dirs(&self) -> Result<(), AppError> {
+        self.ensure_data_dir()?;
         fs::create_dir_all(self.notes_dir())?;
         for name in SYSTEM_ROOTS {
             let path = self.checked_category_path(name)?;
@@ -562,6 +581,17 @@ impl NoteStore {
             &mut folders,
             &mut Vec::new(),
         )?;
+        let hidden_roots: Vec<_> = folders
+            .iter()
+            .filter(|folder| !folder.contains('/'))
+            .filter(|folder| is_storage_directory(&self.notes_dir().join(folder)))
+            .cloned()
+            .collect();
+        folders.retain(|folder| {
+            !hidden_roots
+                .iter()
+                .any(|root| folder == root || folder.starts_with(&format!("{root}/")))
+        });
         folders.sort();
         Ok(folders)
     }

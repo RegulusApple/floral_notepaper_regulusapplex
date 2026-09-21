@@ -27,11 +27,10 @@ const HARMONY_FONT_LICENSE_URL = new URL("../assets/fonts/LICENSE_Fonts", import
 interface SettingsPanelProps {
   config: AppConfig;
   onChange: (config: AppConfig) => void;
-  onMigrateDataDir: () => void;
   onClose: () => void;
 }
 
-export function SettingsPanel({ config, onChange, onMigrateDataDir, onClose }: SettingsPanelProps) {
+export function SettingsPanel({ config, onChange, onClose }: SettingsPanelProps) {
   const { t } = useTranslation();
   const setConfigValue = <Key extends keyof AppConfig>(key: Key, value: AppConfig[Key]) => {
     onChange({ ...config, [key]: value });
@@ -139,15 +138,12 @@ export function SettingsPanel({ config, onChange, onMigrateDataDir, onClose }: S
               type="text"
               value={config.dataDir}
               readOnly
+              aria-label={t("settings.dataDir", { defaultValue: "数据目录" })}
               className="min-w-0 flex-1 h-8 px-2.5 rounded-lg bg-paper-warm/70 border border-paper-deep/40 text-[11px] font-mono text-ink-faint truncate"
             />
-            <button
-              type="button"
-              onClick={onMigrateDataDir}
-              className="h-8 px-3 rounded-lg border border-paper-deep/45 text-[11px] text-ink-faint hover:text-bamboo hover:bg-bamboo-mist/50 transition-colors cursor-pointer"
-            >
-              {t("settings.selectFolder", { defaultValue: "选择文件夹" })}
-            </button>
+            <span className="shrink-0 h-8 px-2.5 inline-flex items-center rounded-lg bg-paper-warm/45 border border-paper-deep/25 text-[11px] text-ink-ghost">
+              {t("settings.dataDirFixed", { defaultValue: "随安装位置" })}
+            </span>
           </div>
         </section>
 

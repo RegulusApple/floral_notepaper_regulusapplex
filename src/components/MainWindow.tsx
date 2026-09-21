@@ -24,13 +24,7 @@ import {
   tagPreviewBlocks,
   type ScrollSyncMap,
 } from "../features/markdown/scrollSync";
-import {
-  chooseDataDirectory,
-  getConfig,
-  migrateDataDir,
-  normalizeViewMode,
-  saveConfig,
-} from "../features/settings/api";
+import { getConfig, normalizeViewMode, saveConfig } from "../features/settings/api";
 import type { AppConfig, ViewMode } from "../features/settings/types";
 import { normalizeTileColor } from "../features/settings/tileColor";
 import { getUpdateStatus, reportInstallPreparation } from "../features/update/api";
@@ -71,6 +65,7 @@ import {
   readExternalFile,
   renameCategory,
   saveExternalFile,
+  takeDataMigrationNotice,
   updateNote,
 } from "../features/notes/api";
 import { cleanUnusedImages, saveImageFromPath } from "../features/images/api";
@@ -379,7 +374,6 @@ export function MainWindow({
     createAboutUpdateReminderState(null),
   );
   const [settingsConfig, setSettingsConfig] = useState<AppConfig | null>(initialConfig ?? null);
-  const [savedDataDir, setSavedDataDir] = useState<string | null>(initialConfig?.dataDir ?? null);
   const [noteTransitionKey, setNoteTransitionKey] = useState(0);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
   const [deleteExiting, setDeleteExiting] = useState(false);
@@ -730,8 +724,15 @@ export function MainWindow({
           listCategories(),
         ]);
         if (cancelled) return;
+        const migratedData = await takeDataMigrationNotice();
+        if (migratedData && !cancelled) {
+          showToast(
+            t("settings.dataMigrationNotice", {
+              defaultValue: "检测到已有笔记，已迁移到当前安装目录。",
+            }),
+          );
+        }
         setSettingsConfig(loadedConfig);
-        setSavedDataDir(loadedConfig.dataDir);
         setViewMode(normalizeViewMode(loadedConfig.defaultViewMode));
         setNotes(loadedNotes);
         setCategories(loadedCategories);
@@ -1317,35 +1318,7 @@ export function MainWindow({
     try {
       const config = await getConfig();
       setSettingsConfig(config);
-      setSavedDataDir(config.dataDir);
       setViewMode(normalizeViewMode(config.defaultViewMode));
-    } catch (error) {
-      showToast(getErrorMessage(error));
-    }
-  };
-
-  const handleMigrateDataDir = async () => {
-    if (!settingsConfig) return;
-    try {
-      const dir = await chooseDataDirectory();
-      if (!dir) return;
-      // 后端会创建私有子目录存放数据；先告知用户，
-      // 避免其在文件管理器打开所选目录看到"空文件夹"而误判数据丢失
-      const confirmed = window.confirm(
-        t("settings.dataDirConfirmSubdir", {
-          dir,
-        }),
-      );
-      if (!confirmed) return;
-      const savedConfig = await migrateDataDir(dir);
-      setSettingsConfig(savedConfig);
-      setSavedDataDir(savedConfig.dataDir);
-      const loadedNotes = await refreshNotes();
-      if (loadedNotes[0]) {
-        await loadNote(loadedNotes[0].id);
-      } else {
-        clearCurrentNote();
-      }
     } catch (error) {
       showToast(getErrorMessage(error));
     }
@@ -1353,39 +1326,25 @@ export function MainWindow({
 
   const settingsSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const persistSettings = useCallback(
-    (nextConfig: AppConfig) => {
-      if (settingsSaveTimer.current) {
-        clearTimeout(settingsSaveTimer.current);
+  const persistSettings = useCallback((nextConfig: AppConfig) => {
+    if (settingsSaveTimer.current) {
+      clearTimeout(settingsSaveTimer.current);
+    }
+    settingsSaveTimer.current = setTimeout(async () => {
+      const normalizedConfig = {
+        ...nextConfig,
+        defaultViewMode: normalizeViewMode(nextConfig.defaultViewMode),
+        tileColor: normalizeTileColor(nextConfig.tileColor),
+      };
+      try {
+        const savedConfig = await saveConfig(normalizedConfig);
+        setSettingsConfig(savedConfig);
+        setViewMode(normalizeViewMode(savedConfig.defaultViewMode));
+      } catch (error) {
+        showToast(getErrorMessage(error));
       }
-      settingsSaveTimer.current = setTimeout(async () => {
-        const previousDataDir = savedDataDir ?? nextConfig.dataDir;
-        const normalizedConfig = {
-          ...nextConfig,
-          defaultViewMode: normalizeViewMode(nextConfig.defaultViewMode),
-          tileColor: normalizeTileColor(nextConfig.tileColor),
-        };
-        try {
-          const savedConfig = await saveConfig(normalizedConfig);
-          setSettingsConfig(savedConfig);
-          setSavedDataDir(savedConfig.dataDir);
-          setViewMode(normalizeViewMode(savedConfig.defaultViewMode));
-
-          if (savedConfig.dataDir !== previousDataDir) {
-            const loadedNotes = await refreshNotes();
-            if (loadedNotes[0]) {
-              await loadNote(loadedNotes[0].id);
-            } else {
-              clearCurrentNote();
-            }
-          }
-        } catch (error) {
-          showToast(getErrorMessage(error));
-        }
-      }, 300);
-    },
-    [savedDataDir, refreshNotes, loadNote, clearCurrentNote],
-  );
+    }, 300);
+  }, []);
 
   const handleSettingsChange = useCallback(
     (nextConfig: AppConfig) => {
@@ -2875,7 +2834,6 @@ export function MainWindow({
                   <SettingsPanel
                     config={settingsConfig}
                     onChange={handleSettingsChange}
-                    onMigrateDataDir={() => void handleMigrateDataDir()}
                     onClose={handleCloseSettings}
                   />
                 </Suspense>

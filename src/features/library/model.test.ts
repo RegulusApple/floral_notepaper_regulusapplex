@@ -63,6 +63,15 @@ describe("library periods", () => {
   );
 });
 describe("real folder and period trees", () => {
+  it("does not recreate filtered storage paths from metadata", () => {
+    const indexed = note("kept", { category: "floral-notepaper-regulusapplex/notes" });
+    const custom = note("custom", { category: "notes" });
+    const tree = buildLibraryTree([indexed, custom], ["notes", "Projects/notes"]);
+    expect(tree.children.map((node) => node.path)).not.toContain("floral-notepaper-regulusapplex");
+    expect(tree.notes).toEqual([indexed]);
+    expect(tree.children.find((node) => node.path === "notes")?.notes).toEqual([custom]);
+    expect(countLibraryNotes(tree)).toBe(2);
+  });
   it("includes empty custom folders, but not empty archive periods", () => {
     const tree = buildLibraryTree([], ["Work/Project/Notes", "diary/2020/2020-W53"]);
     expect(tree.children.map((node) => node.path)).toEqual([

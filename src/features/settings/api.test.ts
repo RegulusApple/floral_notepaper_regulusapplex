@@ -1,30 +1,17 @@
 import { invoke } from "@tauri-apps/api/core";
-import { open } from "@tauri-apps/plugin-dialog";
 import { beforeEach, describe, expect, test, vi } from "vitest";
-import {
-  checkGlobalShortcut,
-  chooseDataDirectory,
-  getConfig,
-  normalizeViewMode,
-  saveConfig,
-} from "./api";
+import { checkGlobalShortcut, getConfig, normalizeViewMode, saveConfig } from "./api";
 import type { AppConfig } from "./types";
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: vi.fn(),
 }));
 
-vi.mock("@tauri-apps/plugin-dialog", () => ({
-  open: vi.fn(),
-}));
-
 const mockedInvoke = vi.mocked(invoke);
-const mockedOpen = vi.mocked(open);
 
 describe("settings api", () => {
   beforeEach(() => {
     mockedInvoke.mockReset();
-    mockedOpen.mockReset();
   });
 
   test("gets config through Rust", async () => {
@@ -115,22 +102,5 @@ describe("settings api", () => {
     expect(normalizeViewMode("split")).toBe("split");
     expect(normalizeViewMode("preview")).toBe("preview");
     expect(normalizeViewMode("unknown")).toBe("split");
-  });
-
-  test("chooses a data directory through the folder picker", async () => {
-    mockedOpen.mockResolvedValue("D:\\notes");
-
-    await expect(chooseDataDirectory()).resolves.toBe("D:\\notes");
-
-    expect(open).toHaveBeenCalledWith({
-      directory: true,
-      multiple: false,
-    });
-  });
-
-  test("returns null when choosing a data directory is cancelled", async () => {
-    mockedOpen.mockResolvedValue(null);
-
-    await expect(chooseDataDirectory()).resolves.toBeNull();
   });
 });

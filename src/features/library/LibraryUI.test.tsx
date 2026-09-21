@@ -86,9 +86,14 @@ it.each([
     expect(container.querySelector('[data-folder-path=""]')).toBeNull();
     expect(container.querySelector('[title="diary/2020"]')).toBeNull();
     expect(container.querySelector('[title="weekly/2026"]')).toBeNull();
-    expect(container.querySelector('[title="diary/2020/2020-W53"]')!.textContent).toBe(week);
-    expect(container.querySelector('[title="weekly/2026/10"]')!.textContent).toBe(month);
-    expect(container.querySelector('[title="monthly/2026"]')!.textContent).toBe(year);
+    expect(container.querySelector(`[title="${week}"]`)!.textContent).toBe(week);
+    expect(container.querySelector(`[title="${month}"]`)!.textContent).toBe(month);
+    expect(container.querySelector(`[title="${year}"]`)!.textContent).toBe(year);
+    expect(
+      Array.from(container.querySelectorAll("[title]")).some((el) =>
+        el.getAttribute("title")?.includes("diary/"),
+      ),
+    ).toBe(false);
     expect(
       Array.from(nav.children)
         .slice(0, 4)
@@ -102,7 +107,9 @@ it.each([
     ).toEqual(["New year diary", "Year-end diary"]);
     expect(diary.querySelector(".library-date")!.textContent).toBe("01-01");
     expect(nav.lastElementChild!.getAttribute("data-note-id")).toBe("Root note");
-    await act(() => container.querySelector<HTMLButtonElement>('[title="diary"]')!.click());
+    await act(() =>
+      diary.querySelector<HTMLButtonElement>(".library-folder-row > button[title]")!.click(),
+    );
     expect(props.onSelectFolder).toHaveBeenCalledWith("diary");
     expect(props.onSelectNote).not.toHaveBeenCalled();
     await act(() => diary.querySelector<HTMLButtonElement>("[aria-expanded]")!.click());
@@ -152,8 +159,12 @@ it("retains context menus and drag destinations for custom folders only", async 
   await act(() => {
     row.dispatchEvent(drag("dragstart"));
     row.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
-    container.querySelector('[title="Work/Deep"]')!.dispatchEvent(drag("drop"));
-    container.querySelector('[title="diary"]')!.dispatchEvent(drag("drop"));
+    container
+      .querySelector('[data-folder-path="Work/Deep"] .library-folder-row')!
+      .dispatchEvent(drag("drop"));
+    container
+      .querySelector('[data-folder-path="diary"] .library-folder-row')!
+      .dispatchEvent(drag("drop"));
   });
   expect(dataTransfer.setData).toHaveBeenCalledWith("application/x-floral-note", "Movable");
   expect(props.onNoteMenu).toHaveBeenCalledWith(expect.anything(), "Movable");
@@ -202,7 +213,11 @@ it("selects folders independently of expanding them and retains nested paths", a
       />,
     ),
   );
-  await act(() => container.querySelector<HTMLButtonElement>('button[title="Work/Deep"]')!.click());
+  await act(() =>
+    container
+      .querySelector<HTMLButtonElement>('[data-folder-path="Work/Deep"] button[title]')!
+      .click(),
+  );
   expect(onSelectFolder).toHaveBeenCalledExactlyOnceWith("Work/Deep");
   await act(() =>
     container.querySelector<HTMLButtonElement>('button[aria-label="收起 Work"]')!.click(),
@@ -213,7 +228,7 @@ it("selects folders independently of expanding them and retains nested paths", a
       .querySelector('[data-folder-path="Work"] .library-folder-children')
       ?.getAttribute("data-expanded"),
   ).toBe("false");
-  expect(container.querySelector('button[title="Work/Deep"]')).not.toBeNull();
+  expect(container.querySelector('[data-folder-path="Work/Deep"] button[title]')).not.toBeNull();
   expect(onRefresh).toHaveBeenCalledTimes(2);
 });
 it("adopts without moving by default, keeps dialog open on a conflict", async () => {

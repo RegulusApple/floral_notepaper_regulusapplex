@@ -4,6 +4,8 @@
 ; or overwrite of an existing desktop shortcut. Keep PRODUCTNAME for display only.
 
 Unicode true
+; Never ship another installer with an unresolved runtime variable (e.g. USERNAME).
+!pragma warning error 6000
 ManifestDPIAware true
 ; Add in `dpiAwareness` `PerMonitorV2` to manifest for Windows 10 1607+ (note this should not affect lower versions since they should be able to ignore this and pick up `dpiAware` `true` set by `ManifestDPIAware true`)
 ; Currently undocumented on NSIS's website but is in the Docs folder of source tree, see
@@ -73,6 +75,7 @@ Var UpdateMode
 Var NoShortcutMode
 Var WixMode
 Var OldMainBinaryName
+Var PrivateCommandLineInstallDir
 
 Name "${PRODUCTNAME}"
 BrandingText "${COPYRIGHT}"
@@ -117,8 +120,8 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
   !else if "${ARCH}" == "arm64"
     !define MULTIUSER_USE_PROGRAMFILES64
   !endif
-  !define MULTIUSER_INSTALLMODE_DEFAULT_REGISTRY_KEY "${UNINSTKEY}"
-  !define MULTIUSER_INSTALLMODE_DEFAULT_REGISTRY_VALUENAME "CurrentUser"
+  ; A fresh interactive install defaults to AllUsers / Program Files. Do not
+  ; let orphaned registry entries select a previous per-user installation.
   !define MULTIUSER_INSTALLMODEPAGE_SHOWUSERNAME
   !define MULTIUSER_INSTALLMODE_FUNCTION RestorePreviousInstallLocation
   !define MULTIUSER_EXECUTIONLEVEL Highest
@@ -379,47 +382,14 @@ FunctionEnd
 
 ; Uninstaller Pages
 ; 1. Confirm uninstall page
-Var DeleteAppDataCheckbox
-Var DeleteAppDataCheckboxState
-!define /ifndef WS_EX_LAYOUTRTL         0x00400000
-!define MUI_PAGE_CUSTOMFUNCTION_SHOW un.ConfirmShow
-Function un.ConfirmShow ; Add add a `Delete app data` check box
-  ; $1 inner dialog HWND
-  ; $2 window DPI
-  ; $3 style
-  ; $4 x
-  ; $5 y
-  ; $6 width
-  ; $7 height
-  FindWindow $1 "#32770" "" $HWNDPARENT ; Find inner dialog
-  System::Call "user32::GetDpiForWindow(p r1) i .r2"
-  ${If} $(^RTL) = 1
-    StrCpy $3 "${__NSD_CheckBox_EXSTYLE} | ${WS_EX_LAYOUTRTL}"
-    IntOp $4 50 * $2
-  ${Else}
-    StrCpy $3 "${__NSD_CheckBox_EXSTYLE}"
-    IntOp $4 0 * $2
-  ${EndIf}
-  IntOp $5 100 * $2
-  IntOp $6 400 * $2
-  IntOp $7 25 * $2
-  IntOp $4 $4 / 96
-  IntOp $5 $5 / 96
-  IntOp $6 $6 / 96
-  IntOp $7 $7 / 96
-  System::Call 'user32::CreateWindowEx(i r3, w "${__NSD_CheckBox_CLASS}", w "$(deleteAppData)", i ${__NSD_CheckBox_STYLE}, i r4, i r5, i r6, i r7, p r1, i0, i0, i0) i .s'
-  Pop $DeleteAppDataCheckbox
-  SendMessage $HWNDPARENT ${WM_GETFONT} 0 0 $1
-  SendMessage $DeleteAppDataCheckbox ${WM_SETFONT} $1 1
-FunctionEnd
-!define MUI_PAGE_CUSTOMFUNCTION_LEAVE un.ConfirmLeave
-Function un.ConfirmLeave
-  SendMessage $DeleteAppDataCheckbox ${BM_GETCHECK} 0 0 $DeleteAppDataCheckboxState
-FunctionEnd
 !define MUI_PAGE_CUSTOMFUNCTION_PRE un.SkipIfPassive
 !insertmacro MUI_UNPAGE_CONFIRM
 
-; 2. Uninstalling Page
+; 2. Explicit Document choice, defaulting to preservation.
+!insertmacro FloralDocumentUninstallSupport
+UninstPage custom un.FloralDocumentPage un.FloralDocumentPageLeave
+
+; 3. Uninstalling Page
 !insertmacro MUI_UNPAGE_INSTFILES
 
 ;Languages
@@ -471,12 +441,27 @@ Function .onInit
       StrCpy $INSTDIR "$LOCALAPPDATA\${PRIVATE_INSTALL_NAME}"
     !endif
 
-    Call RestorePreviousInstallLocation
+    !if "${INSTALLMODE}" != "both"
+      Call RestorePreviousInstallLocation
+    !endif
   ${EndIf}
 
 
   !if "${INSTALLMODE}" == "both"
+    ; MULTIUSER_INIT resets INSTDIR; preserve an explicit NSIS /D= override.
+    ${If} $INSTDIR != "${PLACEHOLDER_INSTALL_DIR}"
+      StrCpy $PrivateCommandLineInstallDir $INSTDIR
+    ${EndIf}
     !insertmacro MULTIUSER_INIT
+    ${If} $UpdateMode == 1
+      ${GetOptions} $CMDLINE "/CurrentUser" $R0
+      ${If} ${Errors}
+        ${GetOptions} $CMDLINE "/AllUsers" $R0
+        ${If} ${Errors}
+          Call SelectPreviousInstallMode
+        ${EndIf}
+      ${EndIf}
+    ${EndIf}
   !endif
 FunctionEnd
 
@@ -707,6 +692,7 @@ Function .onInstSuccess
 FunctionEnd
 
 Function un.onInit
+  StrCpy $FloralDeleteDocument 0
   !insertmacro SetContext
 
   !if "${INSTALLMODE}" == "both"
@@ -733,6 +719,13 @@ Section Uninstall
   !endif
 
   !insertmacro CheckIfAppIsRunning "${MAINBINARYNAME}.exe" "${PRODUCTNAME}"
+
+  Call un.FloralApplyDocumentChoice
+  ${If} $FloralDocumentError != ""
+    MessageBox MB_OK|MB_ICONSTOP "$FloralDocumentError$\r$\n请关闭占用文件的程序或修复权限后重试。" /SD IDOK
+    SetErrorLevel 5
+    Abort
+  ${EndIf}
 
   ; Delete the app directory and its content from disk
   ; Copy main executable
@@ -763,6 +756,7 @@ Section Uninstall
   ; Delete uninstaller
   Delete "$INSTDIR\uninstall.exe"
 
+  ; Retained Document data keeps the install root in place.
   {{#each resources_ancestors}}
   RMDir /REBOOTOK "$INSTDIR\\{{this}}"
   {{/each}}
@@ -814,24 +808,6 @@ Section Uninstall
     DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${PRIVATE_INSTALL_NAME}"
   ${EndIf}
 
-  ; Delete app data if the checkbox is selected
-  ; and if not updating
-  ${If} $DeleteAppDataCheckboxState = 1
-  ${AndIf} $UpdateMode <> 1
-    ; Clear the install location $INSTDIR from registry
-    DeleteRegKey SHCTX "${MANUPRODUCTKEY}"
-    DeleteRegKey /ifempty SHCTX "${MANUKEY}"
-
-    ; Clear the install language from registry
-    DeleteRegValue HKCU "${MANUPRODUCTKEY}" "Installer Language"
-    DeleteRegKey /ifempty HKCU "${MANUPRODUCTKEY}"
-    DeleteRegKey /ifempty HKCU "${MANUKEY}"
-
-    SetShellVarContext current
-    RmDir /r "$APPDATA\${BUNDLEID}"
-    RmDir /r "$LOCALAPPDATA\${BUNDLEID}"
-  ${EndIf}
-
   !ifmacrodef NSIS_HOOK_POSTUNINSTALL
     !insertmacro NSIS_HOOK_POSTUNINSTALL
   !endif
@@ -844,10 +820,45 @@ Section Uninstall
 SectionEnd
 
 Function RestorePreviousInstallLocation
-  ReadRegStr $4 SHCTX "${MANUPRODUCTKEY}" ""
-  StrCmp $4 "" +2 0
-    StrCpy $INSTDIR $4
+  ${If} $PrivateCommandLineInstallDir != ""
+    StrCpy $INSTDIR $PrivateCommandLineInstallDir
+  ${ElseIf} $UpdateMode == 1
+    ; Only an explicit update may reuse an existing installation. A leftover
+    ; data directory or remembered path after uninstall is not an installation.
+    ReadRegStr $4 SHCTX "${MANUPRODUCTKEY}" ""
+    ${If} $4 != ""
+    ${AndIf} ${FileExists} "$4\${MAINBINARYNAME}.exe"
+    ${AndIf} ${FileExists} "$4\uninstall.exe"
+      StrCpy $INSTDIR $4
+    ${EndIf}
+  ${EndIf}
 FunctionEnd
+
+!if "${INSTALLMODE}" == "both"
+Function SelectPreviousInstallMode
+  ; An automatic update still belongs to its original scope. Fresh installs
+  ; ignore these keys, and explicit /CurrentUser, /AllUsers or /D take precedence.
+  ReadRegStr $4 HKLM "${MANUPRODUCTKEY}" ""
+  ${If} $4 != ""
+  ${AndIf} ${FileExists} "$4\${MAINBINARYNAME}.exe"
+  ${AndIf} ${FileExists} "$4\uninstall.exe"
+    ${If} $PrivateCommandLineInstallDir == ""
+    ${OrIf} $PrivateCommandLineInstallDir == $4
+      Call MultiUser.InstallMode.AllUsers
+      Return
+    ${EndIf}
+  ${EndIf}
+  ReadRegStr $4 HKCU "${MANUPRODUCTKEY}" ""
+  ${If} $4 != ""
+  ${AndIf} ${FileExists} "$4\${MAINBINARYNAME}.exe"
+  ${AndIf} ${FileExists} "$4\uninstall.exe"
+    ${If} $PrivateCommandLineInstallDir == ""
+    ${OrIf} $PrivateCommandLineInstallDir == $4
+      Call MultiUser.InstallMode.CurrentUser
+    ${EndIf}
+  ${EndIf}
+FunctionEnd
+!endif
 
 Function Skip
   Abort

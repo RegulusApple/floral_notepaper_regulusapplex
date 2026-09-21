@@ -20,6 +20,7 @@ const LOCALIZED_ERROR_CODES = new Set([
   "metadataRecoveryRequired",
   "unsafePath",
   "dataDirNotEmpty",
+  "dataDirAccess",
   "categoryAlreadyExists",
   "categoryNameEmpty",
   "categoryNameInvalidChars",
@@ -34,6 +35,10 @@ const LOCALIZED_ERROR_CODES = new Set([
 
 export function listNotes(): Promise<NoteMetadata[]> {
   return invoke("notes_list");
+}
+
+export function takeDataMigrationNotice(): Promise<boolean> {
+  return invoke("notes_data_migration_notice");
 }
 
 export function getNote(id: string): Promise<Note> {
@@ -195,6 +200,10 @@ function getLocalizedAppErrorMessage(
       return translate("errors.noteNotFound", { defaultValue: "找不到该笔记" });
     case "dataDirNotEmpty":
       return translate("errors.dataDirNotEmpty");
+    case "dataDirAccess":
+      return translate("errors.dataDirAccess", {
+        defaultValue: "数据目录不可写，请检查 Document 文件夹权限",
+      });
     case "duplicateShortcut":
       return translate("errors.duplicateShortcut", {
         defaultValue: "显示/隐藏窗口快捷键不能与呼出小窗快捷键重复",

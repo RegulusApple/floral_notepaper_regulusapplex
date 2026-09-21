@@ -20,19 +20,6 @@ export function checkGlobalShortcut(shortcut: string): Promise<ShortcutCheckResu
   return invoke("global_shortcut_check", { shortcut });
 }
 
-export async function chooseDataDirectory(): Promise<string | null> {
-  const path = await open({
-    directory: true,
-    multiple: false,
-  });
-
-  return typeof path === "string" ? path : null;
-}
-
-export function migrateDataDir(newDataDir: string): Promise<AppConfig> {
-  return invoke("config_migrate_data_dir", { newDataDir });
-}
-
 export async function chooseBackgroundImage(): Promise<string | null> {
   const path = await open({
     directory: false,

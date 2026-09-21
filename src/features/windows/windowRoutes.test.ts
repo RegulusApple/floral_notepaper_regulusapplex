@@ -21,7 +21,9 @@ describe("window routes", () => {
   });
 
   it("reads the browser location by default", () => {
-    expect(getInitialRoute(new URL("https://floral-notepaper-regulusapplex.test/?view=main"))).toEqual({
+    expect(
+      getInitialRoute(new URL("https://floral-notepaper-regulusapplex.test/?view=main")),
+    ).toEqual({
       view: "main",
     });
   });

@@ -16,17 +16,17 @@
 
 ## 与原 Release 隔离
 
-| 项目                                  | 私有版本                                             |
-| ------------------------------------- | ---------------------------------------------------- |
-| 应用标识                              | `com.regulusapplex.floral.notepaper`                 |
-| 可执行文件                            | `floral-notepaper-regulusapplex.exe`                 |
-| Windows 配置                          | `%APPDATA%\floral-notepaper-regulusapplex`           |
-| 默认笔记、metadata、图片及背景        | Windows“文档”目录下的 `花笺-RegulusApplEx`           |
-| 手动更换数据目录                      | 所选目录下的 `floral-notepaper-regulusapplex` 子目录 |
-| NSIS 安装目录、卸载注册表键、自启动项 | `floral-notepaper-regulusapplex`                     |
-| 开始菜单                              | `floral-notepaper-regulusapplex\花笺`                |
+| 项目                                  | 私有版本                                                                                               |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| 应用标识                              | `com.regulusapplex.floral.notepaper`                                                                   |
+| 可执行文件                            | `floral-notepaper-regulusapplex.exe`                                                                   |
+| Windows 配置                          | `%APPDATA%\floral-notepaper-regulusapplex`                                                             |
+| 默认笔记、metadata、图片及背景        | 当前 exe 所在目录下的 `Document`；默认是 `C:\\Program Files\\floral-notepaper-regulusapplex\\Document` |
+| 手动更换数据目录                      | 正式运行时固定跟随安装目录；环境变量仅用于开发／测试                                                   |
+| NSIS 安装目录、卸载注册表键、自启动项 | `floral-notepaper-regulusapplex`                                                                       |
+| 开始菜单                              | `floral-notepaper-regulusapplex\花笺`                                                                  |
 
-首次运行不扫描或迁移旧版数据。目标数据目录非空时，手动搬迁会拒绝覆盖。测试可通过 `FLORAL_NOTEPAPER_REGULUSAPPLEX_CONFIG_DIR` 和 `FLORAL_NOTEPAPER_REGULUSAPPLEX_DATA_DIR` 同时指定一套独立路径。
+首次运行不扫描或迁移旧 Release 数据。只会把当前私有配置记录的旧数据目录复制到当前安装目录下的 `Document`，并保留源目录；目标非空时不合并、不覆盖。测试和 Debug 构建可通过 `FLORAL_NOTEPAPER_REGULUSAPPLEX_CONFIG_DIR` 与 `FLORAL_NOTEPAPER_REGULUSAPPLEX_DATA_DIR` 指定独立路径。
 
 安装器保留显示名称“花笺”，但使用独立内部标识；不识别／卸载同名的原版 WiX 安装，不改写 Markdown/TXT 文件关联，也不覆盖已有桌面“花笺”快捷方式。可从上表的独立开始菜单启动新版。原版和新版可并存，但同时运行时同一全局快捷键只能被其中一个应用注册；使用新版快捷键时请退出旧版或在新版设置不同按键。
 

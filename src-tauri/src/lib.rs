@@ -6,7 +6,7 @@ pub mod updater;
 
 use locales::Locale;
 use services::notes::{default_store, AppConfig, AppError, Note, NoteMetadata, SaveNoteRequest};
-use services::notes::{PeriodNoteRequest, RecordType};
+use services::notes::{take_data_migration_notice, PeriodNoteRequest, RecordType};
 use std::{env, fs, io::Write, path::PathBuf};
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -230,6 +230,11 @@ fn config_get() -> Result<AppConfig, AppError> {
 }
 
 #[tauri::command]
+fn notes_data_migration_notice() -> bool {
+    take_data_migration_notice()
+}
+
+#[tauri::command]
 fn copy_background_image(_app: AppHandle, source_path: String) -> Result<String, AppError> {
     let source = PathBuf::from(source_path.trim());
     if !source.is_file() {
@@ -287,21 +292,6 @@ fn config_save(app: AppHandle, config: AppConfig) -> Result<AppConfig, AppError>
     }
     let _ = app.emit("config-changed", &saved);
     Ok(saved)
-}
-
-#[tauri::command]
-fn config_migrate_data_dir(app: AppHandle, new_data_dir: String) -> Result<AppConfig, AppError> {
-    let store = default_store()?;
-    let new_path = PathBuf::from(&new_data_dir).join("floral-notepaper-regulusapplex");
-    let new_store = store.migrate_data_to(&new_path)?;
-
-    let scope = app.asset_protocol_scope();
-    let _ = scope.allow_directory(new_path.join("images"), true);
-    let _ = scope.allow_directory(new_path.join("backgrounds"), true);
-
-    let config = new_store.load_config()?;
-    let _ = app.emit("config-changed", &config);
-    Ok(config)
 }
 
 #[tauri::command]
@@ -513,9 +503,9 @@ pub fn run() {
             images_get_base_dir,
             images_clean_unused,
             config_get,
+            notes_data_migration_notice,
             copy_background_image,
             config_save,
-            config_migrate_data_dir,
             global_shortcut_check,
             start_shortcut_recording,
             stop_shortcut_recording,

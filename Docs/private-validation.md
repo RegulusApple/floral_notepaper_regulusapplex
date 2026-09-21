@@ -15,11 +15,13 @@
 
 ## 安装与隔离
 
+本次数据目录改造的目标路径为当前安装目录下的 `Document`，不是用户“文档”目录。安装器创建 `Document` 及四个系统根目录，并只给当前用户授予该目录的修改权限；卸载时保留 `Document`。
+
 - 本机使用独立 Visual Studio 2022 Build Tools、MSVC x64/x86 与 Windows SDK 10.0.26100.0；未安装完整 Visual Studio IDE。
 - `npm run build:windows` 成功生成 NSIS Windows x64 release 安装包。
 - 最终安装器以 `/S /CURRENTUSER /UPDATE` 安装，返回码为 0。
 - 安装位置：`C:\Users\Regulus\AppData\Local\Programs\floral-notepaper-regulusapplex`。已安装程序 PE Machine 为 `0x8664`。
-- 安装阶段已创建当前用户“文档/花笺-RegulusApplEx/notes”下的 diary、weekly、monthly、tiles；重装未覆盖测试数据。
+- 安装阶段应创建安装目录下 `Document` 中的 diary、weekly、monthly、tiles；重装不得覆盖 `Document` 中的测试数据。
 - 开始菜单位置：`floral-notepaper-regulusapplex\花笺`。
 - 原版 `C:\Program Files\花笺\floral-notepaper.exe` SHA-256 在安装前后保持为 `A049C4084D399FD326E62E97D4C5095225B96DFF4050725BA4432A5D99A67FCD`；原版进程仍运行，卸载记录和“花笺”自启动项未改写。
 - 与 floral-notepaper-main 对比，`src/assets` 和 `src-tauri/icons` 文件哈希差异数为 0；两个参考工程未修改。
@@ -40,7 +42,7 @@
 9. 语言切换没有改写此前中文日记和繁体周小结。
 10. 快捷便签输入、保存后进入 `tiles`，类型为 ordinary。钉为磁贴后笔记总数、ID 和 Markdown 文件名保持不变；关闭磁贴后数据仍保留。
 11. 核对 5 篇验收笔记的实际文件均存在，主索引和备份各登记 5 篇。
-12. 最终构建安装完成后，退出验收实例，以正常环境启动正式实例。确认配置语言 zh-CN、数据目录为 `C:\Users\Regulus\Documents\花笺-RegulusApplEx`，metadata 中笔记数及 notes 下文件数均为 0；窗口显示“0 篇笔记”。
+12. 最终构建安装完成后，退出验收实例，以正常环境启动正式实例。确认配置语言 zh-CN、数据目录为当前安装目录下的 `Document`，metadata 中笔记数及四个系统目录文件数均为 0；窗口显示“0 篇笔记”。
 
 桌面验收发现并修复了新建文件夹输入框失焦过早关闭的问题；上层目录计数也调整为包含子目录并按 ID 去重。
 

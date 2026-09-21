@@ -74,6 +74,7 @@ export function buildLibraryTree(notes: NoteMetadata[], folders: string[]): Libr
     return node;
   };
   SYSTEM_ROOTS.forEach(ensure);
+  const visibleFolders = new Set(folders);
   // Only populated period branches are shown. User folders remain visible even empty.
   folders.filter((path) => !isSystemFolder(path)).forEach(ensure);
   for (const note of notes) {
@@ -83,7 +84,11 @@ export function buildLibraryTree(notes: NoteMetadata[], folders: string[]): Libr
         : null;
     if (managed) ensure(managed).notes.push(note);
     if (!managed || !isSystemFolder(note.category) || note.category === "tiles") {
-      ensure(note.category || "").notes.push(note);
+      // The backend decides which physical folders belong in the library.
+      // Keep indexed notes accessible without reintroducing hidden paths.
+      const category =
+        isSystemFolder(note.category) || visibleFolders.has(note.category) ? note.category : "";
+      if (!managed || category) ensure(category).notes.push(note);
     }
   }
   const sort = (node: LibraryNode) => {

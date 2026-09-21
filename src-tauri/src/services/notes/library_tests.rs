@@ -107,6 +107,63 @@ mod tests {
     }
 
     #[test]
+    fn technical_wrappers_are_hidden_without_changing_their_contents() {
+        let fixture = Fixture::new();
+        let store = &fixture.0;
+        let base = store.notes_dir();
+        let wrapper = base.join("floral-notepaper-regulusapplex");
+        for root in SYSTEM_ROOTS {
+            fs::create_dir_all(wrapper.join("notes").join(root)).unwrap();
+            fs::create_dir_all(base.join("notes").join(root)).unwrap();
+        }
+        fs::write(wrapper.join("metadata.json"), b"{\"notes\":[]}").unwrap();
+        let content = "Do not move, copy or import this file";
+        let source = wrapper.join("notes/diary/kept.md");
+        fs::write(&source, content).unwrap();
+        fs::create_dir_all(base.join("images/note-id")).unwrap();
+        fs::create_dir_all(base.join("backgrounds")).unwrap();
+        fs::create_dir_all(base.join("Projects/notes")).unwrap();
+        let before = fs::read(wrapper.join("metadata.json")).unwrap();
+
+        assert_eq!(
+            store.list_categories().unwrap(),
+            [
+                "Projects",
+                "Projects/notes",
+                "diary",
+                "monthly",
+                "tiles",
+                "weekly"
+            ]
+        );
+        assert!(store.list_notes().unwrap().is_empty());
+        assert_eq!(fs::read_to_string(source).unwrap(), content);
+        assert_eq!(fs::read(wrapper.join("metadata.json")).unwrap(), before);
+        assert!(!base.join("diary/kept.md").exists());
+        assert!(base.join("notes/diary").is_dir());
+    }
+
+    #[test]
+    fn ordinary_custom_folders_named_notes_remain_usable() {
+        let fixture = Fixture::new();
+        let store = &fixture.0;
+        for category in [
+            "notes",
+            "Projects/notes",
+            "floral-notepaper-regulusapplex",
+            "Document",
+        ] {
+            store.create_category(category).unwrap();
+            let note = ordinary(store, category);
+            assert_eq!(store.read_note(&note.id).unwrap().category, category);
+            assert!(store
+                .list_categories()
+                .unwrap()
+                .contains(&category.to_string()));
+        }
+    }
+
+    #[test]
     fn concurrent_creation_is_unique() {
         let fixture = Fixture::new();
         let handles: Vec<_> = (0..12)

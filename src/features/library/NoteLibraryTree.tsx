@@ -78,11 +78,7 @@ export function NoteLibraryTree(props: Props) {
         key={note.id}
         data-note-id={note.id}
         aria-pressed={props.selectedId === note.id}
-        title={
-          getDisplayTitle(note, t) +
-          " · " +
-          t("library.location", { path: note.category || t("library.title") })
-        }
+        title={getDisplayTitle(note, t)}
         draggable
         onDragStart={(event) => {
           event.dataTransfer.setData("application/x-floral-note", note.id);
@@ -199,7 +195,7 @@ export function NoteLibraryTree(props: Props) {
               props.onSelectFolder(node.path);
               props.onRefresh();
             }}
-            title={node.path || t("library.title")}
+            title={label(node)}
             className={`min-w-0 flex-1 flex items-center gap-1.5 py-1 text-left cursor-pointer ${
               periodGroup ? "text-[11px] text-ink-faint" : "text-[12px] text-ink-soft"
             }`}

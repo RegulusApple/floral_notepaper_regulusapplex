@@ -1,141 +1,191 @@
-<!-- markdownlint-disable -->
+# 花笺 · Floral Notepaper RegulusApplEx
 
-**简体中文** | [繁體中文](README_zh-HK.md) | [English](README_en-US.md)
+花笺（Floral Notepaper RegulusApplEx）是基于 [Floral Notepaper](https://github.com/Achilng/floral-notepaper) 的独立更新版本。
 
-<div align="center">
+项目保留原有的 React + Tauri + Rust 架构、Markdown 编辑器、窗口交互、托盘、快捷键、主题和静态资源，并在此基础上完善了笔记目录、日记、周小结、月报和自定义文件夹管理。
 
-<img src="./src-tauri/icons/icon.png" width="120" alt="花笺图标">
+> 项目状态：开发中。当前主要面向 Windows x64 使用和构建。
 
-# 花笺
+## 功能概览
 
-轻量、优雅、现代化的本地便签工具（RegulusApplEx 派生项目）<br>
-基于 Tauri 2 + React 构建
+- Markdown 笔记编辑、预览、保存、重命名、移动和删除。
+- 支持导入 Markdown 文件。
+- 支持日记、周小结和月报模板。
+- 日记按记录日期归档，每天一篇。
+- 周小结按 ISO 周归档，每周一篇。
+- 月报按记录月份归档，每月一篇。
+- 支持新建多级自定义文件夹，并对笔记进行整理。
+- 支持磁贴笔记、系统托盘和全局快捷键。
+- 日记、周小结和月报在侧栏中按时间分组显示。
+- 文件夹支持展开、收起和箭头过渡动画。
+- 支持简体中文、繁体中文和英文界面。
+- 支持浅色和深色主题。
+- 不接入 AI，不使用 Flutter，不自动生成或统计日报、周报、月报。
 
-本目录是基于 `floral-notepaper-main` 的独立派生工程，架构与实现解析见上级目录的 [floral-notepaper-main-architecture.md](../floral-notepaper-main-architecture.md)。
+## 笔记目录
 
-私有版本的模板功能、数据隔离与 Windows x64 构建说明见 [开发说明](Docs/private-development.md)。下方原项目的链接保留用于来源说明，不代表本项目的发布通道。
+正式安装后，笔记数据默认存放在当前应用程序目录下的 `Document` 文件夹中：
 
-自建多级文件夹、日记／周小结／月报管理的使用和实现说明见 [笔记目录与周期管理](Docs/note-library.md)。
+```text
+<安装目录>/
+├── floral-notepaper-regulusapplex.exe
+└── Document/
+    ├── metadata.json
+    ├── metadata.backup.json
+    ├── images/
+    ├── diary/
+    ├── weekly/
+    ├── monthly/
+    ├── tiles/
+    └── 用户自定义文件夹/
+```
 
-[反馈问题](https://github.com/Achilng/floral-notepaper/issues) · [更新日志](https://github.com/Achilng/floral-notepaper/releases) <br>
-[快速开始](#快速开始) · [FAQ](https://github.com/Achilng/floral-notepaper/wiki) · [构建指南](#从源码构建)
+默认安装目录为：
 
-[![Version](https://img.shields.io/github/v/release/Achilng/floral-notepaper)](https://github.com/Achilng/floral-notepaper/releases/latest)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
-![Stars](https://img.shields.io/github/stars/Achilng/floral-notepaper?color=ffcb47&labelColor=black)</br>
-![React 19](https://img.shields.io/badge/React-19-blue?logo=react)
-![Tauri v2](https://img.shields.io/badge/Tauri-v2-%2324C8D8?logo=tauri)
-![Rust Edition 2021](https://img.shields.io/badge/Rust-2021-%23000000?logo=rust)<br>
-[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/Achilng/floral-notepaper)
+```text
+C:\\Program Files\\floral-notepaper-regulusapplex\\Document
+```
 
-</div>
+应用设置保存在：
 
-<!-- markdownlint-restore -->
+```text
+%APPDATA%\\floral-notepaper-regulusapplex\\config.json
+```
 
----
+其中，`config.json` 只保存主题、语言、窗口和快捷键等应用设置；笔记、图片、metadata 和分类目录均保存在 `Document` 中。
 
-## 为什么选择花笺
+卸载应用时默认保留 `Document` 及其中的用户数据。重新安装到同一目录时，不会清空已有数据。
 
-市面上现有的笔记或便签软件，要么功能繁重、上手门槛高，要么界面陈旧、久未更新。花笺因此而生，其特点是轻便、随呼随用，同时提供现代化的界面与舒适的编辑体验。
+## 周期笔记组织方式
 
-## 功能特点
+周期笔记仍然是普通 Markdown 笔记，不使用特殊文件格式，也不与模板持续绑定。
 
-- **Markdown 编辑与预览** — 支持 GitHub Flavored Markdown 语法，实时切换编辑和预览模式
+```text
+日记
+└── 2026年第38周
+    ├── 09-20 日记
+    ├── 09-19 日记
+    └── 09-18 日记
 
-  ![主窗口截图](Docs/images/主窗口截图.png)
+周小结
+└── 2026年09月
+    ├── 第38周 周小结
+    └── 第37周 周小结
 
-- **快捷便签** — 通过托盘或全局快捷键（默认 `Ctrl+Space`）随时唤出便签窗口
+月报
+└── 2026年
+    ├── 09月 月报
+    └── 08月 月报
+```
 
-  ![小窗多开示例](Docs/images/小窗多开示例.gif)
+新建模板时，应用会根据当前语言和日期生成 Markdown 初始内容。创建完成后，笔记可以像普通笔记一样编辑、重命名、移动和删除。
 
-- **磁贴模式** — 将笔记固定在桌面某处，以便快速查阅和复制
+## 技术架构
 
-  ![磁贴示例](Docs/images/AI绘画截图.png)
+| 层级         | 技术                       |
+| ------------ | -------------------------- |
+| 前端界面     | React 19、TypeScript、Vite |
+| 桌面容器     | Tauri 2                    |
+| 本地后端     | Rust 2021                  |
+| Markdown     | React Markdown、GFM、KaTeX |
+| 国际化       | i18next、react-i18next     |
+| 测试         | Vitest、Rust tests         |
+| Windows 打包 | NSIS、Tauri Windows x64    |
 
-- **导入导出** — 支持 `.md` 文件的导入和导出
+主要目录：
 
-## 应用场景
+```text
+src/
+├── components/             # 主窗口、编辑器、设置等界面组件
+├── features/library/       # 笔记目录树、文件夹和周期管理
+├── features/noteTemplates/ # 日记、周小结、月报模板
+├── features/notes/         # 笔记创建、读取和保存接口
+├── locales/                # 简体中文、繁体中文和英文语言包
+└── styles/                 # 主题和界面样式
 
-- 当作随时可见的剪贴板，快速暂存和复制文本
-- 游戏、看视频时随手记点东西
-- 临时记录思路或灵感
-- 桌面待办清单
+src-tauri/
+├── src/services/notes/     # Rust 笔记文件和 metadata 逻辑
+├── src/lib.rs              # Tauri 命令和应用初始化
+├── icons/                  # 应用图标和托盘资源
+└── *.nsh                   # Windows 安装器脚本
+```
 
-## 快速开始
+## 开发环境
 
-### 下载安装
+推荐使用 VS Code 作为编辑器。
 
-#### 通过Mirror酱下载
+Windows 开发需要：
 
-> [!TIP]
-> 如您的网络不便访问 GitHub，或下载速度过慢，您可以尝试通过Mirror酱下载花笺<br>
-> 此外，您也可以通过使用Mirror酱下载花笺来赞助花笺的开发者，详见[Mirror酱官网](https://mirrorchyan.com/)
+- Node.js 20.19+ 或 22.12+。
+- Rust stable 工具链和 `x86_64-pc-windows-msvc` 目标。
+- Visual Studio 2022 Build Tools 中的 C++ 工具链。
+- Windows SDK。
+- WebView2 Runtime（Windows 11 和较新的 Windows 10 通常已内置）。
 
-| 系统    | 架构                    | 下载链接                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| ------- | ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Windows | x64                     | [![Windows x64 Setup](https://img.shields.io/badge/Setup-x64-blue?logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MTIiIGhlaWdodD0iNTEyIiB2aWV3Qm94PSIwIDAgNTEyIDUxMiI%2BPHBhdGggZmlsbD0iI2ZmZiIgZD0iTTAgMGgyNDJ2MjQySDB6TTI3MCAwaDI0MnYyNDJIMjcwek0wIDI3MGgyNDJ2MjQySDB6TTI3MCAyNzBoMjQydjI0MkgyNzB6Ii8%2BPC9zdmc%2B)](https://mirrorchyan.com/zh/projects?rid=floral&os=windows&arch=x64&channel=stable)           |
-| Windows | AArch64                 | [![Windows AArch64 Setup](https://img.shields.io/badge/Setup-AArch64-blue?logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MTIiIGhlaWdodD0iNTEyIiB2aWV3Qm94PSIwIDAgNTEyIDUxMiI%2BPHBhdGggZmlsbD0iI2ZmZiIgZD0iTTAgMGgyNDJ2MjQySDB6TTI3MCAwaDI0MnYyNDJIMjcwek0wIDI3MGgyNDJ2MjQySDB6TTI3MCAyNzBoMjQydjI0MkgyNzB6Ii8%2BPC9zdmc%2B)](https://mirrorchyan.com/zh/projects?rid=floral&os=windows&arch=arm64&channel=stable) |
-| macOS   | AArch64 (Apple Silicon) | [![macOS Apple Silicon](https://img.shields.io/badge/DMG-Apple%20Silicon-%23000000.svg?logo=apple)](https://mirrorchyan.com/zh/projects?rid=floral&os=macos&channel=stable&arch=arm64)                                                                                                                                                                                                                                                                                       |
-| macOS   | x64 (Intel)             | [![macOS Apple Silicon](https://img.shields.io/badge/DMG-Intel%20X64-%2300A9E0.svg?logo=apple)](https://mirrorchyan.com/zh/projects?rid=floral&os=macos&channel=stable&arch=x64)                                                                                                                                                                                                                                                                                             |
+不需要安装完整的 Visual Studio IDE。
 
-#### 通过 GitHub 下载
+## 本地开发
 
-请前往 [Release 页](https://github.com/Achilng/floral-notepaper/releases/latest) 下载花笺
+在项目根目录执行：
 
-##### 下载参考
+```powershell
+npm ci
+npm run tauri -- dev
+```
 
-| 系统    | 架构                    | 类型             | 文件名                                      |
-| ------- | ----------------------- | ---------------- | ------------------------------------------- |
-| Windows | x64                     | 安装程序（推荐） | floral-notepaper\_版本号\_x64-setup.exe     |
-| Windows | x64                     | 便携版           | floral-notepaper\_版本号.exe                |
-| Windows | x64                     | 安装包           | floral-notepaper\_版本号\_x64.msix          |
-| Windows | AArch64                 | 安装程序（推荐） | floral-notepaper\_版本号\_aarch64-setup.exe |
-| Windows | AArch64                 | 安装包           | floral-notepaper\_版本号\_aarch64.msix      |
-| macOS   | AArch64 (Apple Silicon) | DMG              | floral-notepaper\_版本号\_aarch64.dmg       |
-| macOS   | x64 (Intel)             | DMG              | floral-notepaper\_版本号\_x64.dmg           |
+如果只需要启动前端 Vite 开发服务器，可以执行：
 
-#### 通过 Microsoft Store 下载
+```powershell
+npm run dev
+```
 
-前往 [Microsoft Store](https://apps.microsoft.com/detail/9NRCC0ZSG81R) 下载花笺
+## 测试与检查
 
-> 注意：MSIX 安装（无论来自 Microsoft Store 还是侧载的 .msix 文件）暂不支持应用内更新，请通过 Microsoft Store 或 GitHub Releases 获取最新版本。
+```powershell
+npm test
+npx tsc --noEmit
+npm run lint
+npx oxfmt --check
+cargo test --manifest-path src-tauri/Cargo.toml --locked
+cargo fmt --manifest-path src-tauri/Cargo.toml --check
+git diff --check
+```
 
-<!-- markdownlint-disable -->
+## Windows x64 构建
 
-<a href="https://apps.microsoft.com/detail/9NRCC0ZSG81R?referrer=appbadge&mode=full" target="_blank"  rel="noopener noreferrer">
-	<img src="https://get.microsoft.com/images/en-us%20dark.svg" width="200"/>
-</a>
+执行：
 
-<!-- markdownlint-restore -->
+```powershell
+npm run build:windows
+```
 
-#### macOS 版安装指引
+该命令会执行前端构建、Rust release 构建，并生成 Windows x64 NSIS 安装包。安装包通常位于：
 
-如遇安装问题，请参考：
+```text
+src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/
+```
 
-- Wiki 中的 [macOS 安装指引](https://github.com/Achilng/floral-notepaper/wiki/macOS-%E5%AE%89%E8%A3%85%E6%8C%87%E5%BC%95-%7C-macOS-Installation-Guidance)
-- 或视频（Bilibili）：[Mac云课堂 - 在 Mac 上装软件，要学会和苹果斗智斗勇](https://www.bilibili.com/video/BV1tg411t7hN)
+`node_modules`、`dist`、`src-tauri/target`、`src-tauri/gen`、`local-build` 和安装包文件均属于可再生成内容，已通过 `.gitignore` 排除，不应提交到仓库。
 
-### 从源码构建
+## 相关文档
 
-请参考 [CONTRIBUTING.md](CONTRIBUTING.md)
+- [私有版本开发说明](Docs/private-development.md)
+- [笔记目录与周期管理](Docs/note-library.md)
+- [本机验收记录](Docs/private-validation.md)
+- [贡献指南](CONTRIBUTING.md)
+- [第三方声明](THIRD_PARTY_NOTICES.md)
 
-## Star History
+## 项目边界
 
-[![Star History Chart](https://star-history.dera.page/svg?repos=Achilng/floral-notepaper&type=Date&legend=top-left)](https://star-history.dera.page/#Achilng/floral-notepaper&Date)
-
-## 🌟 贡献者
-
-[![contrib.rocks](https://contrib.rocks/image?repo=Achilng/floral-notepaper&max=1000)](https://contrib.rocks/image?repo=Achilng/floral-notepaper&max=1000)
-
-## Sponsors
-
-<!-- markdownlint-disable -->
-
-| <img src="https://signpath.org/assets/favicon.png" alt="SignPath Logo" width=50> | Free code signing provided by [SignPath.io](https://signpath.io), certificate by [SignPath Foundation](https://signpath.org/) |
-| -------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- |
-
-<!-- markdownlint-restore -->
+- 不修改 `floral-notepaper-main` 和 `SpringNote-main`。
+- 不嵌入 SpringNote 的 Flutter 工程。
+- 不接入 AI 服务。
+- 不自动迁移或读取原版 Release 的用户数据。
+- 不生成独立的 `reports` 目录。
+- 不改变 Markdown 笔记格式和现有编辑器工作方式。
 
 ## 许可证
 
-[MIT](LICENSE)
+本项目沿用 MIT 许可证，详见 [LICENSE](LICENSE)。
+
+项目来源：[Achilng/floral-notepaper](https://github.com/Achilng/floral-notepaper)

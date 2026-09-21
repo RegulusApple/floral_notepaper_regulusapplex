@@ -66,6 +66,7 @@
     }
   },
   "errors": {
+    "dataDirAccess": "数据目录不可写，请检查安装目录下 Document 文件夹的权限。",
     "dataDirNotEmpty": "目标数据目录非空，请选择一个空目录，避免覆盖已有数据。",
     "categoryAlreadyExists": "分类「{{category}}」已存在",
     "categoryNameEmpty": "分类名不能为空",
@@ -261,6 +262,8 @@
       "zhHK": "繁體中文"
     },
     "dataDir": "数据目录",
+    "dataMigrationNotice": "检测到已有笔记，已迁移到当前安装目录。",
+    "dataDirFixed": "随安装位置",
     "dataDirConfirmSubdir": "数据将存放在「{{dir}}」下的 floral-notepaper-regulusapplex 子文件夹中，是否继续？",
     "openAtCursor": "快捷键打开时跟随鼠标位置",
     "quickNoteShortcut": "快捷记录快捷键",

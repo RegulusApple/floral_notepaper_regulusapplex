@@ -66,6 +66,7 @@
     }
   },
   "errors": {
+    "dataDirAccess": "The data directory is not writable. Check permissions for the Document folder under the installation directory.",
     "dataDirNotEmpty": "The destination data folder is not empty. Choose an empty folder to avoid overwriting existing data.",
     "categoryAlreadyExists": "Category \"{{category}}\" already exists",
     "categoryNameEmpty": "Category name cannot be empty",
@@ -261,6 +262,8 @@
       "zhHK": "繁體中文"
     },
     "dataDir": "Data directory",
+    "dataMigrationNotice": "Existing notes were detected and moved to the current installation directory.",
+    "dataDirFixed": "Follows install location",
     "dataDirConfirmSubdir": "Data will be stored in a floral-notepaper-regulusapplex subfolder of “{{dir}}”. Continue?",
     "openAtCursor": "Open near cursor with shortcut",
     "quickNoteShortcut": "Quick Note shortcut",

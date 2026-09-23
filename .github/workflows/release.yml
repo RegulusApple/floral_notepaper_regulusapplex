@@ -205,10 +205,10 @@ jobs:
             executable_targets+=("$target")
           done < <(
             cargo metadata --manifest-path src-tauri/Cargo.toml --format-version 1 --no-deps |
-              jq -r '.packages[] | select(.name == "floral-notepaper") | .targets[] | select(.kind | index("bin")) | .name' |
+              jq -r '.packages[] | select(.name == "floral-notepaper-regulusapplex") | .targets[] | select(.kind | index("bin")) | .name' |
               sort
           )
-          if [[ ${#executable_targets[@]} -ne 1 || "${executable_targets[0]}" != "floral-notepaper" ]]; then
+          if [[ ${#executable_targets[@]} -ne 1 || "${executable_targets[0]}" != "floral-notepaper-regulusapplex" ]]; then
             echo 'The executable target set has changed; update the SignPath configuration before releasing:' >&2
             printf '%s\n' "${executable_targets[@]}" >&2
             exit 1
@@ -387,7 +387,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
 
-          $binaryPath = 'src-tauri/target/release/floral-notepaper.exe'
+          $binaryPath = 'src-tauri/target/release/floral-notepaper-regulusapplex.exe'
           if (-not (Test-Path -LiteralPath $binaryPath -PathType Leaf)) {
             throw "Windows executable was not found at $binaryPath."
           }
@@ -438,7 +438,7 @@ jobs:
           New-Item -ItemType Directory -Path $releaseDir -Force | Out-Null
           $binaries = @(
             @{
-              Source = 'src-tauri/target/release/floral-notepaper.exe'
+              Source = 'src-tauri/target/release/floral-notepaper-regulusapplex.exe'
               Destination = Join-Path $releaseDir "floral-notepaper_$($env:RELEASE_VERSION).exe"
             }
           )
@@ -625,7 +625,7 @@ jobs:
           $binaries = @(
             @{
               Source = "signed-windows-binaries/floral-notepaper_$($env:RELEASE_VERSION).exe"
-              Target = Join-Path $targetDir 'floral-notepaper.exe'
+              Target = Join-Path $targetDir 'floral-notepaper-regulusapplex.exe'
               Output = 'main_sha256'
             }
           )
@@ -674,7 +674,7 @@ jobs:
 
           $binaries = @(
             @{
-              Path = 'src-tauri/target/release/floral-notepaper.exe'
+              Path = 'src-tauri/target/release/floral-notepaper-regulusapplex.exe'
               ExpectedSha256 = $env:EXPECTED_MAIN_SHA256
             }
           )
@@ -857,7 +857,7 @@ jobs:
 
             $installEntry = Get-InstallEntry -Mode $Mode -RegistryRoots $RegistryRoots
             $installDir = $installEntry.InstallLocation.Trim('"')
-            $installedBinary = Join-Path $installDir 'floral-notepaper.exe'
+            $installedBinary = Join-Path $installDir 'floral-notepaper-regulusapplex.exe'
             $uninstaller = Join-Path $installDir 'uninstall.exe'
             & 'scripts/verify-authenticode.ps1' -Path $installedBinary -RequireTimestamp -SigntoolVerify
 
@@ -1011,7 +1011,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
 
-          $binaryPath = 'src-tauri/target/aarch64-pc-windows-msvc/release/floral-notepaper.exe'
+          $binaryPath = 'src-tauri/target/aarch64-pc-windows-msvc/release/floral-notepaper-regulusapplex.exe'
           if (-not (Test-Path -LiteralPath $binaryPath -PathType Leaf)) {
             throw "AArch64 Windows executable was not found at $binaryPath."
           }
@@ -1058,7 +1058,7 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
 
-          $binaryPath = 'src-tauri/target/aarch64-pc-windows-msvc/release/floral-notepaper.exe'
+          $binaryPath = 'src-tauri/target/aarch64-pc-windows-msvc/release/floral-notepaper-regulusapplex.exe'
           if (-not (Test-Path -LiteralPath $binaryPath -PathType Leaf)) {
             throw "AArch64 Windows executable was not found at $binaryPath."
           }
@@ -1235,7 +1235,7 @@ jobs:
           $binaries = @(
             @{
               Source = "signed-windows-binaries-arm64/floral-notepaper_$($env:RELEASE_VERSION)_aarch64.exe"
-              Target = Join-Path $targetDir 'floral-notepaper.exe'
+              Target = Join-Path $targetDir 'floral-notepaper-regulusapplex.exe'
               Output = 'main_sha256'
             }
           )
@@ -1284,7 +1284,7 @@ jobs:
 
           $binaries = @(
             @{
-              Path = 'src-tauri/target/aarch64-pc-windows-msvc/release/floral-notepaper.exe'
+              Path = 'src-tauri/target/aarch64-pc-windows-msvc/release/floral-notepaper-regulusapplex.exe'
               ExpectedSha256 = $env:EXPECTED_MAIN_SHA256
             }
           )
@@ -1468,7 +1468,7 @@ jobs:
 
             $installEntry = Get-InstallEntry -Mode $Mode -RegistryRoots $RegistryRoots
             $installDir = $installEntry.InstallLocation.Trim('"')
-            $installedBinary = Join-Path $installDir 'floral-notepaper.exe'
+            $installedBinary = Join-Path $installDir 'floral-notepaper-regulusapplex.exe'
             $uninstaller = Join-Path $installDir 'uninstall.exe'
             & 'scripts/verify-authenticode.ps1' -Path $installedBinary -RequireTimestamp -SigntoolVerify
 
@@ -1648,7 +1648,7 @@ jobs:
 
           $layoutDir = 'msix-layout'
           New-Item -ItemType Directory -Path $layoutDir -Force | Out-Null
-          Copy-Item -LiteralPath $sourcePath -Destination (Join-Path $layoutDir 'floral-notepaper.exe') -Force
+          Copy-Item -LiteralPath $sourcePath -Destination (Join-Path $layoutDir 'floral-notepaper-regulusapplex.exe') -Force
 
           & 'scripts/build-msix.ps1' `
             -Version $env:RELEASE_VERSION `
@@ -1656,7 +1656,7 @@ jobs:
             -PublisherCN $env:MSIX_PUBLISHER_CN `
             -PublisherDisplayName $env:MSIX_PUBLISHER_DISPLAY_NAME `
             -Arch $env:MATRIX_ARCH `
-            -BinaryPath (Join-Path $layoutDir 'floral-notepaper.exe') `
+            -BinaryPath (Join-Path $layoutDir 'floral-notepaper-regulusapplex.exe') `
             -IconsDir 'src-tauri/icons' `
             -OutputDir 'msix-out'
           if ($LASTEXITCODE -ne 0) {
@@ -1707,9 +1707,9 @@ jobs:
           $embeddedBinaryPath = Join-Path $env:RUNNER_TEMP "msix-embedded-$($env:MATRIX_ARCH).exe"
           $archive = [System.IO.Compression.ZipFile]::OpenRead((Resolve-Path -LiteralPath $msixPath).Path)
           try {
-            $entry = $archive.GetEntry('floral-notepaper.exe')
+            $entry = $archive.GetEntry('floral-notepaper-regulusapplex.exe')
             if (-not $entry) {
-              throw 'floral-notepaper.exe was not found inside the signed MSIX.'
+              throw 'floral-notepaper-regulusapplex.exe was not found inside the signed MSIX.'
             }
             $inputStream = $entry.Open()
             try {
@@ -1844,7 +1844,7 @@ jobs:
           "- SignatureKind: $($package.SignatureKind)" >> $env:GITHUB_STEP_SUMMARY
           "- InstallLocation: $installDir" >> $env:GITHUB_STEP_SUMMARY
 
-          $exe = Join-Path $installDir 'floral-notepaper.exe'
+          $exe = Join-Path $installDir 'floral-notepaper-regulusapplex.exe'
           if (-not (Test-Path -LiteralPath $exe -PathType Leaf)) {
             throw "Installed executable was not found at $exe."
           }
@@ -1853,7 +1853,7 @@ jobs:
           # app must at least reach the Rust setup stage (creating the
           # unvirtualized config dir). WebView rendering is reviewed manually.
           $process = Start-Process -FilePath $exe -PassThru
-          $configDir = Join-Path $env:APPDATA 'floral-notepaper'
+          $configDir = Join-Path $env:APPDATA 'floral-notepaper-regulusapplex'
           $deadline = (Get-Date).AddSeconds(20)
           while ((Get-Date) -lt $deadline) {
             if (Test-Path -LiteralPath $configDir) {

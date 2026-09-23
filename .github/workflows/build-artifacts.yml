@@ -175,7 +175,7 @@ jobs:
           $setupAsset = Join-Path $releaseDir "floral-notepaper_${ver}_x64-setup.exe"
           $portableAsset = Join-Path $releaseDir "floral-notepaper_${ver}.exe"
           Copy-Item $setupSource.FullName $setupAsset -Force
-          Copy-Item 'src-tauri/target/release/floral-notepaper.exe' $portableAsset -Force
+          Copy-Item 'src-tauri/target/release/floral-notepaper-regulusapplex.exe' $portableAsset -Force
 
       - name: Upload artifacts
         uses: actions/upload-artifact@v4

@@ -32,7 +32,7 @@
   written as arm64, the only value Windows manifests accept).
 
 .PARAMETER BinaryPath
-  Path to floral-notepaper.exe to embed. Release builds pass a signed binary;
+  Path to floral-notepaper-regulusapplex.exe to embed. Release builds pass a signed binary;
   local unsigned builds are also supported for package inspection.
 
 .PARAMETER IconsDir
@@ -46,7 +46,7 @@
   powershell -ExecutionPolicy Bypass -File scripts/build-msix.ps1 `
     -Version 1.1.0 -IdentityName FloralNotepaper `
     -PublisherCN "CN=Example Inc." -PublisherDisplayName "Example Inc." `
-    -Arch x64 -BinaryPath signed/floral-notepaper.exe `
+    -Arch x64 -BinaryPath signed/floral-notepaper-regulusapplex.exe `
     -IconsDir src-tauri/icons -OutputDir msix-out
 #>
 [CmdletBinding()]
@@ -159,7 +159,7 @@ New-Item -ItemType Directory -Path $layoutDir -Force | Out-Null
   (New-Object System.Text.UTF8Encoding($false))
 )
 
-Copy-Item -LiteralPath $BinaryPath -Destination (Join-Path $layoutDir 'floral-notepaper.exe') -Force
+Copy-Item -LiteralPath $BinaryPath -Destination (Join-Path $layoutDir 'floral-notepaper-regulusapplex.exe') -Force
 
 $logoAssets = @(
   'StoreLogo.png',
@@ -318,9 +318,9 @@ if ($identity.ProcessorArchitecture -ne $manifestArch) {
   throw "Unexpected ProcessorArchitecture in packed manifest: $($identity.ProcessorArchitecture), expected $manifestArch"
 }
 
-$packedBinaryPath = Join-Path $verifyDir 'floral-notepaper.exe'
+$packedBinaryPath = Join-Path $verifyDir 'floral-notepaper-regulusapplex.exe'
 if (-not (Test-Path -LiteralPath $packedBinaryPath -PathType Leaf)) {
-  throw 'floral-notepaper.exe was not found in the packed package.'
+  throw 'floral-notepaper-regulusapplex.exe was not found in the packed package.'
 }
 $packedSha256 = (Get-FileHash -LiteralPath $packedBinaryPath -Algorithm SHA256).Hash
 if ($packedSha256 -ne $binarySha256) {

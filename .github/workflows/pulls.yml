@@ -493,7 +493,7 @@ jobs:
           }
 
           $setupSource = $setupCandidates[0]
-          $portableSource = 'src-tauri/target/release/floral-notepaper.exe'
+          $portableSource = 'src-tauri/target/release/floral-notepaper-regulusapplex.exe'
           if (-not (Test-Path $portableSource)) {
             throw "No Windows portable executable found at $portableSource."
           }

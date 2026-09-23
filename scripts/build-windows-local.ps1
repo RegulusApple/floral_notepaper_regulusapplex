@@ -215,7 +215,7 @@ try {
     }
 
     $targetReleaseDir = Join-Path $repoRoot "src-tauri/target/$rustTarget/release"
-    $binaryPath = Join-Path $targetReleaseDir 'floral-notepaper.exe'
+    $binaryPath = Join-Path $targetReleaseDir 'floral-notepaper-regulusapplex.exe'
     if (-not (Test-Path -LiteralPath $binaryPath -PathType Leaf)) {
       throw "Built executable was not found: $binaryPath"
     }

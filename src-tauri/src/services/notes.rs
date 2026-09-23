@@ -5,11 +5,13 @@ use std::{
     collections::BTreeMap,
     env, fmt, fs, io,
     path::{Component, Path, PathBuf},
+    sync::Mutex,
 };
 use uuid::Uuid;
 
 mod library;
 use library::STORAGE_LOCK;
+static CONFIG_LOCK: Mutex<()> = Mutex::new(());
 pub use library::{PeriodNoteRequest, RecordType};
 
 #[cfg(target_os = "macos")]
@@ -51,6 +53,12 @@ pub struct AppConfig {
     pub tile_color: String,
     #[serde(default = "default_tile_color_mode")]
     pub tile_color_mode: String,
+    #[serde(default = "default_tile_style")]
+    pub tile_style: String,
+    #[serde(default = "default_tile_appearance")]
+    pub tile_appearance: String,
+    #[serde(default, deserialize_with = "deserialize_tile_opacities")]
+    pub tile_opacity_by_note_id: BTreeMap<String, f64>,
     #[serde(default = "default_theme")]
     pub theme: String,
     #[serde(default = "default_font_size")]
@@ -95,6 +103,8 @@ pub struct AppConfig {
     pub surface_height: Option<u32>,
     #[serde(default = "default_toggle_visibility_shortcut")]
     pub toggle_visibility_shortcut: String,
+    #[serde(default = "default_todo_shortcut")]
+    pub todo_shortcut: String,
     #[serde(default = "default_open_at_cursor")]
     pub open_at_cursor: bool,
     // Legacy fields — read from old config, never written back
@@ -818,16 +828,38 @@ impl NoteStore {
     }
 
     pub fn load_config(&self) -> Result<AppConfig, AppError> {
+        let _guard = CONFIG_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        self.load_config_unlocked()
+    }
+
+    fn load_config_unlocked(&self) -> Result<AppConfig, AppError> {
         self.ensure_config_dir()?;
         let path = self.config_path();
         if !path.exists() {
             let config = self.default_config();
-            self.save_config(config.clone())?;
+            self.write_config_unlocked(config.clone())?;
             self.mark_macos_shortcut_migration_handled()?;
             return Ok(config);
         }
 
-        let mut config: AppConfig = serde_json::from_str(&fs::read_to_string(&path)?)?;
+        let source: serde_json::Value = serde_json::from_str(&fs::read_to_string(&path)?)?;
+        let has_todo_shortcut = source.get("todoShortcut").is_some();
+        let mut config: AppConfig = serde_json::from_value(source)?;
+        // Adding a default must never take a shortcut already chosen for another action.
+        if !has_todo_shortcut
+            && [
+                config.global_shortcut.as_str(),
+                config.toggle_visibility_shortcut.as_str(),
+            ]
+            .iter()
+            .any(|shortcut| {
+                crate::desktop::shortcut_from_config(shortcut)
+                    == crate::desktop::shortcut_from_config(&config.todo_shortcut)
+            })
+        {
+            config.todo_shortcut.clear();
+        }
+        normalize_tile_config(&mut config);
         // Settings survive reinstalls, but historical dataDir/notesDir values
         // never authorize reading or migrating another installation's data.
         config.data_dir = Some(self.data_dir.to_string_lossy().to_string());
@@ -841,13 +873,33 @@ impl NoteStore {
     }
 
     pub fn save_config(&self, mut config: AppConfig) -> Result<AppConfig, AppError> {
+        let _guard = CONFIG_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        // Whole settings snapshots must not overwrite another window's opacity edits.
+        config.tile_opacity_by_note_id = self.load_config_unlocked()?.tile_opacity_by_note_id;
+        self.write_config_unlocked(config)
+    }
+
+    fn write_config_unlocked(&self, mut config: AppConfig) -> Result<AppConfig, AppError> {
         self.ensure_config_dir()?;
+        normalize_tile_config(&mut config);
         config.data_dir = Some(self.data_dir.to_string_lossy().to_string());
         config.tab_indent_size = config.tab_indent_size.clamp(1, 8);
         is_safe_data_dir(&self.data_dir)?;
         self.ensure_library_dirs()?;
         write_json_atomic(&self.config_path(), &config)?;
         Ok(config)
+    }
+
+    pub fn set_tile_opacity(&self, note_id: &str, opacity: f64) -> Result<AppConfig, AppError> {
+        // Lock order is always storage, then config (also used by deletion).
+        let _storage = STORAGE_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        self.find_metadata(note_id)?;
+        let _config = CONFIG_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let mut config = self.load_config_unlocked()?;
+        config
+            .tile_opacity_by_note_id
+            .insert(note_id.to_string(), normalize_tile_opacity(opacity));
+        self.write_config_unlocked(config)
     }
 
     pub fn delete_note(&self, id: &str) -> Result<(), AppError> {
@@ -865,6 +917,13 @@ impl NoteStore {
             recycle_path(&path)?;
         }
         self.save_metadata(&metadata)?;
+        {
+            let _config = CONFIG_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let mut config = self.load_config_unlocked()?;
+            if config.tile_opacity_by_note_id.remove(id).is_some() {
+                self.write_config_unlocked(config)?;
+            }
+        }
         let _ = self.delete_note_images(id);
         Ok(())
     }
@@ -981,6 +1040,9 @@ impl NoteStore {
             note_surface_auto_save: true,
             tile_color: default_tile_color(),
             tile_color_mode: default_tile_color_mode(),
+            tile_style: default_tile_style(),
+            tile_appearance: default_tile_appearance(),
+            tile_opacity_by_note_id: BTreeMap::new(),
             theme: default_theme(),
             font_size: default_font_size(),
             surface_font_size: default_surface_font_size(),
@@ -1003,6 +1065,7 @@ impl NoteStore {
             surface_width: None,
             surface_height: None,
             toggle_visibility_shortcut: default_toggle_visibility_shortcut(),
+            todo_shortcut: default_todo_shortcut(),
             open_at_cursor: default_open_at_cursor(),
             notes_dir: None,
             last_known_base_dir: None,
@@ -1318,6 +1381,64 @@ fn default_tile_color_mode() -> String {
     "system".into()
 }
 
+fn default_todo_shortcut() -> String {
+    "Ctrl+Alt+T".into()
+}
+
+fn default_tile_style() -> String {
+    "floral-purple".into()
+}
+fn default_tile_appearance() -> String {
+    "system".into()
+}
+
+pub(super) fn normalize_tile_opacity(value: f64) -> f64 {
+    if value.is_finite() {
+        (value.clamp(0.05, 0.95) * 20.0).round() / 20.0
+    } else {
+        0.45
+    }
+}
+
+fn deserialize_tile_opacities<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<BTreeMap<String, f64>, D::Error> {
+    let value = serde_json::Value::deserialize(deserializer)?;
+    Ok(value
+        .as_object()
+        .map(|map| {
+            map.iter()
+                .map(|(id, value)| {
+                    (
+                        id.clone(),
+                        normalize_tile_opacity(value.as_f64().unwrap_or(0.45)),
+                    )
+                })
+                .collect()
+        })
+        .unwrap_or_default())
+}
+
+fn normalize_tile_config(config: &mut AppConfig) {
+    if ![
+        "paper",
+        "minimal",
+        "glass-blue",
+        "floral-purple",
+        "floral-green",
+    ]
+    .contains(&config.tile_style.as_str())
+    {
+        config.tile_style = default_tile_style();
+    }
+    if !["system", "light", "dark"].contains(&config.tile_appearance.as_str()) {
+        config.tile_appearance = default_tile_appearance();
+    }
+    for value in config.tile_opacity_by_note_id.values_mut() {
+        *value = normalize_tile_opacity(*value);
+    }
+}
+
 fn default_theme() -> String {
     "system".into()
 }
@@ -1590,6 +1711,10 @@ mod tests {
             note_surface_auto_save: false,
             tile_color: "#efe8dc".into(),
             tile_color_mode: "custom".into(),
+            tile_style: "floral-purple".into(),
+            tile_appearance: "system".into(),
+            tile_opacity_by_note_id: Default::default(),
+            todo_shortcut: default_todo_shortcut(),
             theme: "dark".into(),
             font_size: 16,
             surface_font_size: 16,
@@ -1647,6 +1772,92 @@ mod tests {
                 .join("Documents")
                 .join("花笺-RegulusApplEx")
         ));
+    }
+
+    #[test]
+    fn legacy_and_invalid_tile_config_values_have_safe_defaults() {
+        let store = test_store("tile-config-compatibility");
+        let mut json = serde_json::to_value(store.default_config()).unwrap();
+        let map = json.as_object_mut().unwrap();
+        map.remove("tileStyle");
+        map.remove("tileAppearance");
+        map.remove("tileOpacityByNoteId");
+        write_json_atomic(&store.config_path(), &json).unwrap();
+        let legacy = store.load_config().unwrap();
+        assert_eq!(legacy.tile_style, "floral-purple");
+        assert_eq!(legacy.tile_appearance, "system");
+        assert!(legacy.tile_opacity_by_note_id.is_empty());
+
+        json["tileStyle"] = serde_json::json!("unknown-style");
+        json["tileAppearance"] = serde_json::json!("unknown-mode");
+        json["tileOpacityByNoteId"] =
+            serde_json::json!({"low": -1, "high": 9, "bad": "oops", "null": null, "ok": 0.75});
+        write_json_atomic(&store.config_path(), &json).unwrap();
+        let config = store.load_config().unwrap();
+        assert_eq!(config.tile_style, "floral-purple");
+        assert_eq!(config.tile_appearance, "system");
+        assert_eq!(config.tile_opacity_by_note_id["low"], 0.05);
+        assert_eq!(config.tile_opacity_by_note_id["high"], 0.95);
+        assert_eq!(config.tile_opacity_by_note_id["bad"], 0.45);
+        assert_eq!(config.tile_opacity_by_note_id["null"], 0.45);
+        assert_eq!(config.tile_opacity_by_note_id["ok"], 0.75);
+    }
+
+    #[test]
+    fn new_todo_shortcut_preserves_legacy_keys_and_explicit_disable() {
+        let store = test_store("todo-shortcut-compatibility");
+        let mut json = serde_json::to_value(store.default_config()).unwrap();
+        json.as_object_mut().unwrap().remove("todoShortcut");
+        json["globalShortcut"] = serde_json::json!("Ctrl+Alt+T");
+        write_json_atomic(&store.config_path(), &json).unwrap();
+        let config = store.load_config().unwrap();
+        assert_eq!(config.global_shortcut, "Ctrl+Alt+T");
+        assert_eq!(config.todo_shortcut, "");
+        json["globalShortcut"] = serde_json::json!("Ctrl+Alt+N");
+        write_json_atomic(&store.config_path(), &json).unwrap();
+        assert_eq!(store.load_config().unwrap().todo_shortcut, "Ctrl+Alt+T");
+        json["todoShortcut"] = serde_json::json!("");
+        write_json_atomic(&store.config_path(), &json).unwrap();
+        assert_eq!(store.load_config().unwrap().todo_shortcut, "");
+    }
+
+    #[test]
+    fn tile_opacity_updates_are_independent_and_survive_stale_settings_saves() {
+        let store = test_store("tile-opacity-concurrency");
+        let create = |title: &str| {
+            store
+                .create_note(SaveNoteRequest {
+                    title: title.into(),
+                    content: "- [ ] task\r\n".into(),
+                    category: "tiles".into(),
+                })
+                .unwrap()
+        };
+        let first = create("First");
+        let second = create("Second");
+        let mut stale = store.load_config().unwrap();
+        stale.tile_style = "floral-green".into();
+        std::thread::scope(|scope| {
+            scope.spawn(|| store.set_tile_opacity(&first.id, 0.6).unwrap());
+            scope.spawn(|| store.set_tile_opacity(&second.id, 0.8).unwrap());
+        });
+        let saved = store.save_config(stale).unwrap();
+        assert_eq!(saved.tile_opacity_by_note_id[&first.id], 0.6);
+        assert_eq!(saved.tile_opacity_by_note_id[&second.id], 0.8);
+        let reopened = NoteStore::new(store.config_dir.clone(), store.data_dir.clone());
+        assert_eq!(
+            reopened.load_config().unwrap().tile_opacity_by_note_id,
+            saved.tile_opacity_by_note_id
+        );
+        assert_eq!(
+            reopened.read_note(&first.id).unwrap().content,
+            "- [ ] task\r\n"
+        );
+        store.delete_note(&first.id).unwrap();
+        let after = store.load_config().unwrap();
+        assert!(!after.tile_opacity_by_note_id.contains_key(&first.id));
+        assert_eq!(after.tile_opacity_by_note_id[&second.id], 0.8);
+        assert!(store.set_tile_opacity(&first.id, 0.7).is_err());
     }
 
     #[test]

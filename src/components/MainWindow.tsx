@@ -11,10 +11,11 @@ import {
 import type { MouseEvent } from "react";
 import type { TFunction } from "i18next";
 import { useTranslation } from "react-i18next";
-import { emit, listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { exportMarkdownNote, importMarkdownNote } from "../features/importExport/api";
 import { MarkdownPreviewLazy as MarkdownPreview } from "../features/markdown/MarkdownPreviewLazy";
+import { formatMarkdownText, type FormatAction } from "../features/markdown/editorFormatting";
 import { showToast } from "./Toast";
 import {
   createScrollSyncMap,
@@ -27,6 +28,8 @@ import {
 import { getConfig, normalizeViewMode, saveConfig } from "../features/settings/api";
 import type { AppConfig, ViewMode } from "../features/settings/types";
 import { normalizeTileColor } from "../features/settings/tileColor";
+import { previewTaskCssVariables } from "../features/settings/tileAppearance";
+import { useSystemDark } from "../features/settings/useSystemDark";
 import { getUpdateStatus, reportInstallPreparation } from "../features/update/api";
 import {
   ABOUT_UPDATE_LABEL_DURATION_MS,
@@ -121,18 +124,6 @@ interface CategoryMenuState {
   category: string;
 }
 
-type FormatAction =
-  | "bold"
-  | "italic"
-  | "heading"
-  | "hr"
-  | "ul"
-  | "ol"
-  | "code"
-  | "quote"
-  | "inlineMath"
-  | "blockMath";
-
 function applyFormat(
   textarea: HTMLTextAreaElement,
   action: FormatAction,
@@ -140,165 +131,23 @@ function applyFormat(
   setContent: (v: string) => void,
   markDirty: () => void,
 ) {
-  const { selectionStart: start, selectionEnd: end, value } = textarea;
-  const selected = value.slice(start, end);
-  const before = value.slice(0, start);
-  const after = value.slice(end);
-
-  const lineStart = before.lastIndexOf("\n") + 1;
-  const currentLine = before.slice(lineStart);
-
-  let result: string;
-  let cursorStart: number;
-  let cursorEnd: number;
-
-  switch (action) {
-    case "bold": {
-      const fallback = translate("main.formatSample.boldText", { defaultValue: "粗体文本" });
-      const wrapped = `**${selected || fallback}**`;
-      result = before + wrapped + after;
-      cursorStart = start + 2;
-      cursorEnd = cursorStart + (selected || fallback).length;
-      break;
-    }
-    case "italic": {
-      const fallback = translate("main.formatSample.italicText", { defaultValue: "斜体文本" });
-      const wrapped = `*${selected || fallback}*`;
-      result = before + wrapped + after;
-      cursorStart = start + 1;
-      cursorEnd = cursorStart + (selected || fallback).length;
-      break;
-    }
-    case "heading": {
-      const prefix = currentLine.match(/^(#{1,5})\s/);
-      if (prefix) {
-        const newLevel = prefix[1].length < 5 ? "#".repeat(prefix[1].length + 1) : "#";
-        const beforeLine = value.slice(0, lineStart);
-        const afterPrefix = value.slice(lineStart + prefix[0].length);
-        result = beforeLine + newLevel + " " + afterPrefix;
-        const offset = newLevel.length + 1 - prefix[0].length;
-        cursorStart = start + offset;
-        cursorEnd = end + offset;
-      } else if (currentLine.length > 0 && start === end) {
-        result = value.slice(0, lineStart) + "## " + value.slice(lineStart);
-        cursorStart = start + 3;
-        cursorEnd = cursorStart;
-      } else if (selected) {
-        result = before + `## ${selected}` + after;
-        cursorStart = start + 3;
-        cursorEnd = cursorStart + selected.length;
-      } else {
-        result =
-          before +
-          `## ${translate("main.formatSample.headingText", { defaultValue: "标题" })}` +
-          after;
-        cursorStart = start + 3;
-        cursorEnd = cursorStart + 2;
-      }
-      break;
-    }
-    case "hr": {
-      const newlineBefore = before.endsWith("\n") || before === "" ? "" : "\n";
-      const newlineAfter = after.startsWith("\n") || after === "" ? "" : "\n";
-      result = before + `${newlineBefore}---${newlineAfter}` + after;
-      cursorStart = cursorEnd = before.length + newlineBefore.length + 3;
-      break;
-    }
-    case "ul": {
-      if (selected.includes("\n")) {
-        const lines = selected
-          .split("\n")
-          .map((l) => `- ${l}`)
-          .join("\n");
-        result = before + lines + after;
-        cursorStart = start;
-        cursorEnd = start + lines.length;
-      } else {
-        const fallback = translate("main.formatSample.listItem", { defaultValue: "列表项" });
-        const item = `- ${selected || fallback}`;
-        result = before + item + after;
-        cursorStart = start + 2;
-        cursorEnd = cursorStart + (selected || fallback).length;
-      }
-      break;
-    }
-    case "ol": {
-      if (selected.includes("\n")) {
-        const lines = selected
-          .split("\n")
-          .map((l, i) => `${i + 1}. ${l}`)
-          .join("\n");
-        result = before + lines + after;
-        cursorStart = start;
-        cursorEnd = start + lines.length;
-      } else {
-        const fallback = translate("main.formatSample.listItem", { defaultValue: "列表项" });
-        const item = `1. ${selected || fallback}`;
-        result = before + item + after;
-        cursorStart = start + 3;
-        cursorEnd = cursorStart + (selected || fallback).length;
-      }
-      break;
-    }
-    case "code": {
-      if (selected.includes("\n")) {
-        const wrapped = "```\n" + selected + "\n```";
-        result = before + wrapped + after;
-        cursorStart = start + 4;
-        cursorEnd = cursorStart + selected.length;
-      } else {
-        const fallback = translate("main.formatSample.codeText", { defaultValue: "代码" });
-        const wrapped = `\`${selected || fallback}\``;
-        result = before + wrapped + after;
-        cursorStart = start + 1;
-        cursorEnd = cursorStart + (selected || fallback).length;
-      }
-      break;
-    }
-    case "quote": {
-      if (selected.includes("\n")) {
-        const lines = selected
-          .split("\n")
-          .map((l) => `> ${l}`)
-          .join("\n");
-        result = before + lines + after;
-        cursorStart = start;
-        cursorEnd = start + lines.length;
-      } else {
-        const fallback = translate("main.formatSample.quoteText", { defaultValue: "引用文本" });
-        const item = `> ${selected || fallback}`;
-        result = before + item + after;
-        cursorStart = start + 2;
-        cursorEnd = cursorStart + (selected || fallback).length;
-      }
-      break;
-    }
-    case "inlineMath": {
-      const wrapped = `$${selected || "E=mc^2"}$`;
-      result = before + wrapped + after;
-      cursorStart = start + 1;
-      cursorEnd = cursorStart + (selected || "E=mc^2").length;
-      break;
-    }
-    case "blockMath": {
-      const wrapped = `\n$$\n${selected || "x^2 + y^2 = r^2"}\n$$\n`;
-      result = before + wrapped + after;
-      cursorStart = start + 4;
-      cursorEnd = cursorStart + (selected || "x^2 + y^2 = r^2").length;
-      break;
-    }
-  }
-
   // Selecting the whole value scrolls the textarea to the top; capture the
   // scroll offset so we can restore the viewport after replacing the content.
   const previousScrollTop = textarea.scrollTop;
+  const formatted = formatMarkdownText(
+    textarea.value,
+    textarea.selectionStart,
+    textarea.selectionEnd,
+    action,
+    translate,
+  );
   textarea.focus();
-  textarea.setSelectionRange(0, value.length);
-  document.execCommand("insertText", false, result);
-  setContent(result);
+  textarea.setSelectionRange(0, textarea.value.length);
+  document.execCommand("insertText", false, formatted.value);
+  setContent(formatted.value);
   markDirty();
   requestAnimationFrame(() => {
-    textarea.setSelectionRange(cursorStart, cursorEnd);
+    textarea.setSelectionRange(formatted.selectionStart, formatted.selectionEnd);
     textarea.scrollTop = previousScrollTop;
   });
 }
@@ -594,6 +443,7 @@ export function MainWindow({
   // 打字时输入框优先响应：预览渲染与字数/字节统计使用延迟值，
   // 连续输入期间 React 会自动合并这些重计算，停顿时再追上
   const deferredContent = useDeferredValue(content);
+  const systemDark = useSystemDark();
 
   const lineCount = useMemo(() => deferredContent.split("\n").length, [deferredContent]);
   const byteSize = useMemo(
@@ -902,12 +752,20 @@ export function MainWindow({
           if (!currentId) return;
           const stillExists = loaded.some((n) => n.id === currentId);
           if (stillExists) {
-            if (saveStateRef.current !== "dirty" && saveStateRef.current !== "saving") {
+            if (
+              saveStateRef.current !== "dirty" &&
+              saveStateRef.current !== "saving" &&
+              saveStateRef.current !== "error"
+            ) {
               void getNote(currentId)
                 .then((note) => {
                   if (isStale()) return;
                   if (selectedIdRef.current !== currentId) return;
-                  if (saveStateRef.current === "dirty" || saveStateRef.current === "saving") {
+                  if (
+                    saveStateRef.current === "dirty" ||
+                    saveStateRef.current === "saving" ||
+                    saveStateRef.current === "error"
+                  ) {
                     return;
                   }
                   titleValueRef.current = note.title;
@@ -1325,31 +1183,55 @@ export function MainWindow({
   };
 
   const settingsSaveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const settingsPendingRef = useRef(false);
+  const settingsRevisionRef = useRef(0);
+  const settingsWriteQueue = useRef(Promise.resolve());
+
+  useEffect(() => {
+    const unlisten = listen<AppConfig>("config-changed", ({ payload }) => {
+      setSettingsConfig((current) =>
+        settingsPendingRef.current && current
+          ? { ...current, tileOpacityByNoteId: payload.tileOpacityByNoteId }
+          : payload,
+      );
+    });
+    return () => {
+      void unlisten.then((dispose) => dispose());
+    };
+  }, []);
 
   const persistSettings = useCallback((nextConfig: AppConfig) => {
+    settingsPendingRef.current = true;
+    const revision = ++settingsRevisionRef.current;
     if (settingsSaveTimer.current) {
       clearTimeout(settingsSaveTimer.current);
     }
-    settingsSaveTimer.current = setTimeout(async () => {
+    settingsSaveTimer.current = setTimeout(() => {
       const normalizedConfig = {
         ...nextConfig,
         defaultViewMode: normalizeViewMode(nextConfig.defaultViewMode),
         tileColor: normalizeTileColor(nextConfig.tileColor),
       };
-      try {
-        const savedConfig = await saveConfig(normalizedConfig);
-        setSettingsConfig(savedConfig);
-        setViewMode(normalizeViewMode(savedConfig.defaultViewMode));
-      } catch (error) {
-        showToast(getErrorMessage(error));
-      }
+      settingsWriteQueue.current = settingsWriteQueue.current.then(async () => {
+        if (revision !== settingsRevisionRef.current) return;
+        try {
+          const savedConfig = await saveConfig(normalizedConfig);
+          if (revision === settingsRevisionRef.current) {
+            setSettingsConfig(savedConfig);
+            setViewMode(normalizeViewMode(savedConfig.defaultViewMode));
+          }
+        } catch (error) {
+          showToast(getErrorMessage(error));
+        } finally {
+          if (revision === settingsRevisionRef.current) settingsPendingRef.current = false;
+        }
+      });
     }, 300);
   }, []);
 
   const handleSettingsChange = useCallback(
     (nextConfig: AppConfig) => {
       setSettingsConfig(nextConfig);
-      void emit("config-changed", nextConfig);
       persistSettings(nextConfig);
     },
     [persistSettings],
@@ -2739,6 +2621,7 @@ export function MainWindow({
                       )}
                       <div
                         ref={previewScrollRef}
+                        style={previewTaskCssVariables(settingsConfig ?? {}, systemDark)}
                         onScroll={handlePreviewScroll}
                         className={`flex-1 overflow-y-auto px-6 pb-6 ${
                           viewMode === "preview" ? "pt-3" : "pt-1"
@@ -2746,6 +2629,15 @@ export function MainWindow({
                       >
                         <MarkdownPreview
                           content={deferredContent}
+                          onContentChange={
+                            deferredContent === content
+                              ? (next) => {
+                                  contentValueRef.current = next;
+                                  setContent(next);
+                                  markDirty();
+                                }
+                              : undefined
+                          }
                           fontSize={settingsConfig?.fontSize ?? 14}
                           renderHtml={settingsConfig?.renderHtmlMarkdown ?? false}
                           imageBaseDir={imageBaseDir ?? undefined}
@@ -2833,6 +2725,16 @@ export function MainWindow({
                 <Suspense fallback={null}>
                   <SettingsPanel
                     config={settingsConfig}
+                    tileNotes={notes.filter(
+                      (note) =>
+                        note.category === "tiles" ||
+                        note.category.startsWith("tiles/") ||
+                        pinnedTileIds.has(note.id) ||
+                        Object.prototype.hasOwnProperty.call(
+                          settingsConfig.tileOpacityByNoteId ?? {},
+                          note.id,
+                        ),
+                    )}
                     onChange={handleSettingsChange}
                     onClose={handleCloseSettings}
                   />

@@ -483,6 +483,7 @@ pub struct RuntimeConfigChanges {
     pub autostart_changed: bool,
     pub global_shortcut_changed: bool,
     pub toggle_visibility_shortcut_changed: bool,
+    pub todo_shortcut_changed: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -547,6 +548,7 @@ struct RuntimeState {
     is_exiting: AtomicBool,
     windows_hidden: AtomicBool,
     hidden_window_labels: Mutex<Vec<String>>,
+    last_surface: Mutex<Option<String>>,
     #[cfg(desktop)]
     shortcut_bindings: Mutex<ShortcutBindings>,
 }
@@ -556,12 +558,14 @@ struct RuntimeState {
 struct ShortcutBindings {
     open_notepad: Option<Shortcut>,
     toggle_visibility: Option<Shortcut>,
+    open_todo: Option<Shortcut>,
 }
 
 #[cfg(desktop)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ShortcutAction {
     OpenNotepad,
+    OpenTodo,
     ToggleVisibility,
 }
 
@@ -655,7 +659,9 @@ impl RuntimeState {
 #[cfg(desktop)]
 impl ShortcutBindings {
     fn action_for(&self, shortcut: &Shortcut) -> Option<ShortcutAction> {
-        if self
+        if self.open_todo.as_ref().is_some_and(|s| s == shortcut) {
+            Some(ShortcutAction::OpenTodo)
+        } else if self
             .toggle_visibility
             .as_ref()
             .is_some_and(|s| s == shortcut)
@@ -1004,6 +1010,7 @@ pub fn runtime_config_changes(previous: &AppConfig, next: &AppConfig) -> Runtime
         global_shortcut_changed: previous.global_shortcut != next.global_shortcut,
         toggle_visibility_shortcut_changed: previous.toggle_visibility_shortcut
             != next.toggle_visibility_shortcut,
+        todo_shortcut_changed: previous.todo_shortcut != next.todo_shortcut,
     }
 }
 
@@ -1075,12 +1082,25 @@ pub fn apply_runtime_config(
 ) -> Result<(), Box<dyn Error>> {
     let changes = runtime_config_changes(previous, next);
 
-    if changes.global_shortcut_changed || changes.toggle_visibility_shortcut_changed {
+    if changes.global_shortcut_changed
+        || changes.toggle_visibility_shortcut_changed
+        || changes.todo_shortcut_changed
+    {
         apply_global_shortcut_config(app, next)?;
     }
 
     if changes.autostart_changed {
-        apply_autostart(app, next.autostart)?;
+        if let Err(error) = apply_autostart(app, next.autostart) {
+            if changes.global_shortcut_changed
+                || changes.toggle_visibility_shortcut_changed
+                || changes.todo_shortcut_changed
+            {
+                if let Err(rollback) = apply_global_shortcut_config(app, previous) {
+                    eprintln!("failed to restore shortcuts after autostart failure: {rollback}");
+                }
+            }
+            return Err(error);
+        }
     }
 
     Ok(())
@@ -1136,11 +1156,36 @@ pub fn setup_desktop(app: &mut App) -> Result<(), Box<dyn Error>> {
     });
     setup_autostart_plugin(app.handle())?;
     setup_global_shortcut_plugin(app.handle())?;
-    sync_autostart_to_config(app.handle());
+    if !(cfg!(debug_assertions) && std::env::var("FLORAL_GLASS_QA").as_deref() == Ok("1")) {
+        sync_autostart_to_config(app.handle());
+    }
     register_configured_global_shortcut(app.handle());
     setup_app_menu(app)?;
     setup_tray(app)?;
     schedule_notepad_prewarm(app.handle());
+
+    #[cfg(debug_assertions)]
+    if std::env::var("FLORAL_GLASS_QA").as_deref() == Ok("1") {
+        let config = std::env::var("FLORAL_NOTEPAPER_REGULUSAPPLEX_CONFIG_DIR").unwrap_or_default();
+        let data = std::env::var("FLORAL_NOTEPAPER_REGULUSAPPLEX_DATA_DIR").unwrap_or_default();
+        if !config.contains("local-build") || !data.contains("local-build") {
+            return Err(
+                "Glass QA requires isolated local-build data and config directories".into(),
+            );
+        }
+        app.asset_protocol_scope()
+            .allow_file("C:\\Windows\\Web\\Wallpaper\\Windows\\img0.jpg")?;
+        WebviewWindowBuilder::new(
+            app,
+            "glass-qa",
+            WebviewUrl::App("index.html?glassQa=1".into()),
+        )
+        .title("Floral Glass QA — Windows wallpaper")
+        .inner_size(1100.0, 760.0)
+        .center()
+        .build()?;
+        return Ok(());
+    }
 
     if !std::env::args().any(|a| a == "--silent") {
         if let Err(error) = show_main_window(app.handle()) {
@@ -1159,7 +1204,26 @@ pub fn setup_desktop(app: &mut App) -> Result<(), Box<dyn Error>> {
 }
 
 pub fn handle_window_event(window: &Window, event: &WindowEvent) {
+    if crate::native_glass::is_surface(window.label()) {
+        #[cfg(target_os = "windows")]
+        if matches!(
+            event,
+            WindowEvent::Resized(_) | WindowEvent::ScaleFactorChanged { .. }
+        ) {
+            if let Err(error) = crate::native_glass::clip(window) {
+                eprintln!("glass clipping failed: {error}");
+            }
+        }
+        if matches!(event, WindowEvent::Focused(true)) {
+            if let Some(state) = window.app_handle().try_state::<RuntimeState>() {
+                if let Ok(mut label) = state.last_surface.lock() {
+                    *label = Some(window.label().to_string());
+                }
+            }
+        }
+    }
     if matches!(event, WindowEvent::Destroyed) {
+        crate::native_glass::release(window.label());
         if let Some(note_id) = window.label().strip_prefix("tile-") {
             let _ = window
                 .app_handle()
@@ -1614,6 +1678,7 @@ fn prewarm_notepad(app: &AppHandle) -> Result<(), AppError> {
     .inner_size(specs.width, specs.height)
     .min_inner_size(specs.min_width, specs.min_height)
     .resizable(true)
+    .disable_drag_drop_handler()
     .decorations(false)
     .transparent(visual_options.transparent)
     .always_on_top(true)
@@ -1795,6 +1860,47 @@ fn open_tile_window_now(
     )
 }
 
+/// Reuse the last visible surface, or the dedicated persistent task surface.
+pub fn open_todo_window(app: &AppHandle) -> Result<String, AppError> {
+    let last = app.try_state::<RuntimeState>().and_then(|state| {
+        state
+            .last_surface
+            .lock()
+            .ok()
+            .and_then(|label| label.clone())
+    });
+    let window = last
+        .and_then(|label| app.get_webview_window(&label))
+        .filter(|window| window.is_visible().unwrap_or(false))
+        .or_else(|| app.get_webview_window("todo"));
+    if let Some(window) = window {
+        window.unminimize()?;
+        window.show()?;
+        window.set_focus()?;
+        window.emit("workspace:todo", window.label())?;
+        return Ok(window.label().to_string());
+    }
+    open_or_focus_window(
+        app,
+        "todo",
+        WindowOpenOptions {
+            url: "index.html?view=notepad&workspace=todo".into(),
+            title: locales::app_name(configured_locale()).into(),
+            specs: WindowSizeSpec {
+                width: 400.0,
+                height: 360.0,
+                min_width: 280.0,
+                min_height: 260.0,
+            },
+            decorations: false,
+            always_on_top: true,
+            shadow: false,
+            skip_taskbar: true,
+            bounds: None,
+        },
+    )
+}
+
 fn toggle_tile_window_now(
     app: &AppHandle,
     note_id: &str,
@@ -1834,6 +1940,7 @@ fn open_or_focus_window(
         .inner_size(opts.specs.width, opts.specs.height)
         .min_inner_size(opts.specs.min_width, opts.specs.min_height)
         .resizable(true)
+        .disable_drag_drop_handler()
         .decorations(opts.decorations)
         .transparent(visual_options.transparent)
         .always_on_top(opts.always_on_top)
@@ -1886,8 +1993,7 @@ fn tile_window_label(note_id: &str) -> String {
 }
 
 fn dynamic_window_visual_options(label: &str) -> DynamicWindowVisualOptions {
-    let is_app_surface =
-        label == MAIN_WINDOW_LABEL || label.starts_with("notepad-") || label.starts_with("tile-");
+    let is_app_surface = label == MAIN_WINDOW_LABEL || crate::native_glass::is_surface(label);
 
     DynamicWindowVisualOptions {
         transparent: is_app_surface,
@@ -1962,6 +2068,15 @@ fn setup_global_shortcut_plugin(app: &AppHandle) -> tauri::Result<()> {
 
                 let app_for_closure = app.clone();
                 match action {
+                    ShortcutAction::OpenTodo => {
+                        if let Err(error) = app.run_on_main_thread(move || {
+                            if let Err(error) = open_todo_window(&app_for_closure) {
+                                eprintln!("failed to open tasks: {error}");
+                            }
+                        }) {
+                            eprintln!("failed to dispatch tasks shortcut: {error}");
+                        }
+                    }
                     ShortcutAction::ToggleVisibility => {
                         if let Err(error) = app.run_on_main_thread(move || {
                             toggle_app_visibility(&app_for_closure);
@@ -2162,7 +2277,32 @@ fn shortcut_bindings_from_config(config: &AppConfig) -> Result<ShortcutBindings,
         )?)
     };
 
-    // 只有两个快捷键都已设置时才需要检查重复，避免清空快捷键时误报配置冲突。
+    let open_todo = if config.todo_shortcut.is_empty() {
+        None
+    } else {
+        Some(parse_configured_shortcut(
+            "todoShortcut",
+            &config.todo_shortcut,
+        )?)
+    };
+    let all = [open_notepad, toggle_visibility, open_todo];
+    for (index, shortcut) in all.iter().enumerate() {
+        if let Some(shortcut) = shortcut {
+            if all[..index]
+                .iter()
+                .flatten()
+                .any(|previous| previous == shortcut)
+            {
+                return Err(Box::new(AppError {
+                    code: "duplicateShortcut".into(),
+                    message: "Shortcuts must differ".into(),
+                    details: Default::default(),
+                }));
+            }
+        }
+    }
+
+    // Keep the existing conflict error for callers using the older two shortcuts.
     if open_notepad
         .as_ref()
         .zip(toggle_visibility.as_ref())
@@ -2178,6 +2318,7 @@ fn shortcut_bindings_from_config(config: &AppConfig) -> Result<ShortcutBindings,
     Ok(ShortcutBindings {
         open_notepad,
         toggle_visibility,
+        open_todo,
     })
 }
 
@@ -2189,15 +2330,68 @@ fn install_global_shortcut_bindings(
 ) -> Result<(), Box<dyn Error>> {
     let bindings = shortcut_bindings_from_config(config)?;
 
+    let previous = app
+        .try_state::<RuntimeState>()
+        .and_then(|state| {
+            state
+                .shortcut_bindings
+                .lock()
+                .ok()
+                .map(|value| value.clone())
+        })
+        .unwrap_or_default();
+
+    if !replace_existing {
+        let mut active = bindings.clone();
+        let mut failure = None;
+        for slot in [
+            &mut active.open_notepad,
+            &mut active.toggle_visibility,
+            &mut active.open_todo,
+        ] {
+            if let Some(shortcut) = *slot {
+                if let Err(error) = app.global_shortcut().register(shortcut) {
+                    *slot = None;
+                    failure = Some(error);
+                }
+            }
+        }
+        if let Some(state) = app.try_state::<RuntimeState>() {
+            state.set_shortcut_bindings(active);
+        }
+        return match failure {
+            Some(error) => Err(Box::new(error)),
+            None => Ok(()),
+        };
+    }
+
     if replace_existing {
         app.global_shortcut().unregister_all()?;
     }
 
-    if let Some(shortcut) = &bindings.open_notepad {
-        app.global_shortcut().register(*shortcut)?;
-    }
-    if let Some(shortcut) = &bindings.toggle_visibility {
-        app.global_shortcut().register(*shortcut)?;
+    for shortcut in [
+        bindings.open_notepad,
+        bindings.toggle_visibility,
+        bindings.open_todo,
+    ]
+    .into_iter()
+    .flatten()
+    {
+        if let Err(error) = app.global_shortcut().register(shortcut) {
+            // A failed new binding must not remove the user's working bindings.
+            let _ = app.global_shortcut().unregister_all();
+            for old in [
+                previous.open_notepad,
+                previous.toggle_visibility,
+                previous.open_todo,
+            ]
+            .into_iter()
+            .flatten()
+            {
+                let _ = app.global_shortcut().register(old);
+            }
+            return Err(Box::new(error));
+        }
     }
 
     if let Some(state) = app.try_state::<RuntimeState>() {
@@ -2578,6 +2772,10 @@ mod tests {
             note_surface_auto_save: true,
             tile_color: "#f6f3ec".into(),
             tile_color_mode: "system".into(),
+            tile_style: "floral-purple".into(),
+            tile_appearance: "system".into(),
+            tile_opacity_by_note_id: Default::default(),
+            todo_shortcut: "Ctrl+Alt+T".into(),
             theme: "light".into(),
             font_size: 14,
             surface_font_size: 14,
@@ -2622,12 +2820,28 @@ mod tests {
     #[cfg(desktop)]
     #[test]
     fn accepts_empty_shortcut_bindings() {
-        let config = test_app_config("", "");
+        let mut config = test_app_config("", "");
+        config.todo_shortcut.clear();
 
         let bindings = shortcut_bindings_from_config(&config).expect("empty shortcuts are valid");
 
         assert!(bindings.open_notepad.is_none());
         assert!(bindings.toggle_visibility.is_none());
+        assert!(bindings.open_todo.is_none());
+    }
+
+    #[cfg(desktop)]
+    #[test]
+    fn todo_shortcut_is_separate_and_rejects_collisions() {
+        let config = test_app_config("Ctrl+Alt+N", "Ctrl+Shift+H");
+        let bindings = shortcut_bindings_from_config(&config).unwrap();
+        let todo = to_tauri_shortcut(shortcut_from_config("Ctrl+Alt+T").unwrap()).unwrap();
+        assert!(matches!(
+            bindings.action_for(&todo),
+            Some(ShortcutAction::OpenTodo)
+        ));
+        let duplicate = test_app_config("Ctrl+Alt+T", "");
+        assert!(shortcut_bindings_from_config(&duplicate).is_err());
     }
 
     #[cfg(desktop)]
@@ -2663,6 +2877,10 @@ mod tests {
             note_surface_auto_save: true,
             tile_color: "#f6f3ec".into(),
             tile_color_mode: "system".into(),
+            tile_style: "floral-purple".into(),
+            tile_appearance: "system".into(),
+            tile_opacity_by_note_id: Default::default(),
+            todo_shortcut: "Ctrl+Alt+T".into(),
             theme: "light".into(),
             font_size: 14,
             surface_font_size: 14,
@@ -2700,6 +2918,10 @@ mod tests {
             note_surface_auto_save: false,
             tile_color: "#efe8dc".into(),
             tile_color_mode: "custom".into(),
+            tile_style: "floral-purple".into(),
+            tile_appearance: "system".into(),
+            tile_opacity_by_note_id: Default::default(),
+            todo_shortcut: "Ctrl+Alt+T".into(),
             theme: "dark".into(),
             font_size: 16,
             surface_font_size: 16,
@@ -2733,6 +2955,7 @@ mod tests {
                 autostart_changed: true,
                 global_shortcut_changed: true,
                 toggle_visibility_shortcut_changed: true,
+                todo_shortcut_changed: false,
             }
         );
         assert_eq!(
@@ -2741,6 +2964,7 @@ mod tests {
                 autostart_changed: false,
                 global_shortcut_changed: false,
                 toggle_visibility_shortcut_changed: false,
+                todo_shortcut_changed: false,
             }
         );
     }
@@ -2813,5 +3037,10 @@ mod tests {
         assert!(permissions
             .iter()
             .any(|permission| permission.as_str() == Some("core:window:allow-set-focus")));
+        // Tauri JS onCloseRequested() calls destroy() after our save guard allows
+        // closing. allow-close alone leaves an unresponsive surface on screen.
+        assert!(permissions
+            .iter()
+            .any(|permission| permission.as_str() == Some("core:window:allow-destroy")));
     }
 }

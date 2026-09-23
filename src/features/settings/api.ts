@@ -16,6 +16,10 @@ export function saveConfig(config: AppConfig): Promise<AppConfig> {
   return invoke("config_save", { config });
 }
 
+export function saveTileOpacity(noteId: string, opacity: number): Promise<AppConfig> {
+  return invoke("config_set_tile_opacity", { noteId, opacity });
+}
+
 export function checkGlobalShortcut(shortcut: string): Promise<ShortcutCheckResult> {
   return invoke("global_shortcut_check", { shortcut });
 }

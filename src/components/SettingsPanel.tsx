@@ -1,7 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useMemo } from "react";
 import { useTranslation } from "react-i18next";
-import { checkGlobalShortcut, chooseBackgroundImage } from "../features/settings/api";
+import { chooseBackgroundImage } from "../features/settings/api";
 import { UpdateSettingsSection } from "../features/update/UpdateSettingsSection";
 import type {
   AppConfig,
@@ -10,27 +10,24 @@ import type {
   TileColorMode,
   ViewMode,
 } from "../features/settings/types";
-import {
-  formatHeldKeys,
-  hotkeyToConfigString,
-  isValidGlobalShortcut,
-  shortcutPlatform,
-} from "../features/settings/shortcutRecorder";
-import { useShortcutRecorder } from "../features/settings/useShortcutRecorder";
+import { GlobalShortcutRecorder } from "../features/settings/GlobalShortcutRecorder";
 import { DEFAULT_TILE_COLOR, normalizeTileColor } from "../features/settings/tileColor";
 import { applyTheme, watchSystemTheme } from "../features/settings/theme";
 import { LOCALE_OPTIONS } from "../locales/locale-whitelist";
 import { SlidingButtonGroup } from "./SlidingButtonGroup";
+import { TileSettings } from "../features/settings/TileSettings";
+import type { NoteMetadata } from "../features/notes/types";
 
 const HARMONY_FONT_LICENSE_URL = new URL("../assets/fonts/LICENSE_Fonts", import.meta.url).href;
 
 interface SettingsPanelProps {
+  tileNotes?: NoteMetadata[];
   config: AppConfig;
   onChange: (config: AppConfig) => void;
   onClose: () => void;
 }
 
-export function SettingsPanel({ config, onChange, onClose }: SettingsPanelProps) {
+export function SettingsPanel({ config, tileNotes = [], onChange, onClose }: SettingsPanelProps) {
   const { t } = useTranslation();
   const setConfigValue = <Key extends keyof AppConfig>(key: Key, value: AppConfig[Key]) => {
     onChange({ ...config, [key]: value });
@@ -232,7 +229,7 @@ export function SettingsPanel({ config, onChange, onClose }: SettingsPanelProps)
             <label className="block text-[11px] font-body text-ink-faint/70 px-0.5">
               {t("settings.quickNoteShortcut", { defaultValue: "快捷记录快捷键" })}
             </label>
-            <ShortcutRecorder
+            <GlobalShortcutRecorder
               value={config.globalShortcut}
               onChange={(v) => setConfigValue("globalShortcut", v)}
             />
@@ -241,10 +238,26 @@ export function SettingsPanel({ config, onChange, onClose }: SettingsPanelProps)
             <label className="block text-[11px] font-body text-ink-faint/70 px-0.5">
               {t("settings.visibilityShortcut", { defaultValue: "显示/隐藏窗口快捷键" })}
             </label>
-            <ShortcutRecorder
+            <GlobalShortcutRecorder
               value={config.toggleVisibilityShortcut}
               onChange={(v) => setConfigValue("toggleVisibilityShortcut", v)}
             />
+          </div>
+          <div className="space-y-1.5">
+            <label className="block text-[11px] font-body text-ink-faint/70 px-0.5">
+              {t("desktopTasks.shortcut")}
+            </label>
+            <GlobalShortcutRecorder
+              value={config.todoShortcut ?? "Ctrl+Alt+T"}
+              helpKey="desktopTasks.shortcutHint"
+              onChange={(v) => setConfigValue("todoShortcut", v)}
+            />
+            <button
+              className="text-[12px] text-bamboo cursor-pointer"
+              onClick={() => void invoke("open_todo_window")}
+            >
+              {t("desktopTasks.open")}
+            </button>
           </div>
         </section>
 
@@ -308,6 +321,7 @@ export function SettingsPanel({ config, onChange, onClose }: SettingsPanelProps)
           </div>
         </section>
 
+        <TileSettings config={config} notes={tileNotes} onChange={onChange} />
         <section className="space-y-2">
           <label className="block text-[11px] font-body text-ink-faint">
             {t("settings.tileColor.label", { defaultValue: "磁贴颜色" })}
@@ -535,199 +549,6 @@ function RangeRow({ label, value, min, max, step, format, onChange }: RangeRowPr
       <span className="w-10 text-right text-[11px] font-mono text-ink-soft tabular-nums">
         {format(value)}
       </span>
-    </div>
-  );
-}
-
-interface ShortcutRecorderProps {
-  value: string;
-  onChange: (value: string) => void;
-}
-
-type ShortcutMsg = { key: string; params?: Record<string, string> } | { raw: string };
-
-function ShortcutRecorder({ value, onChange }: ShortcutRecorderProps) {
-  const { t } = useTranslation();
-  const [checkState, setCheckState] = useState<"idle" | "checking" | "ok" | "warning" | "error">(
-    "idle",
-  );
-  const [checkMsg, setCheckMsg] = useState<ShortcutMsg>({
-    key: "settings.shortcut.forQuickNote",
-  });
-  const shortcutCheckRequestId = useRef(0);
-  const isMounted = useRef(true);
-  const platform = shortcutPlatform();
-
-  const resolveMsg = (msg: ShortcutMsg): string =>
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    "raw" in msg ? msg.raw : (t as any)(msg.key, msg.params);
-
-  useEffect(() => {
-    isMounted.current = true;
-    return () => {
-      isMounted.current = false;
-      shortcutCheckRequestId.current += 1;
-    };
-  }, []);
-
-  const isCurrentShortcutCheck = (requestId: number) =>
-    isMounted.current && requestId === shortcutCheckRequestId.current;
-
-  const invalidateShortcutChecks = () => {
-    shortcutCheckRequestId.current += 1;
-  };
-
-  const markShortcutCleared = () => {
-    invalidateShortcutChecks();
-    setCheckState("idle");
-    setCheckMsg({ key: "settings.shortcut.cleared" });
-  };
-
-  const runShortcutCheck = async (shortcut: string, saveWhenAvailable: boolean) => {
-    // 未设置是合法状态，不需要调用后端做冲突检测。
-    if (!shortcut) {
-      markShortcutCleared();
-      return;
-    }
-
-    const requestId = shortcutCheckRequestId.current + 1;
-    shortcutCheckRequestId.current = requestId;
-    setCheckState("checking");
-    setCheckMsg({ key: "settings.shortcut.checking" });
-    try {
-      const result = await checkGlobalShortcut(shortcut);
-      if (!isCurrentShortcutCheck(requestId)) return;
-      const conflictMsg: ShortcutMsg = {
-        key: `settings.shortcut.conflict.${result.conflictType}`,
-        params: { shortcut },
-      };
-      if (result.available) {
-        setCheckState("ok");
-        setCheckMsg(conflictMsg);
-        if (saveWhenAvailable) {
-          onChange(shortcut);
-        }
-      } else {
-        setCheckState("warning");
-        setCheckMsg(conflictMsg);
-      }
-    } catch (error) {
-      if (!isCurrentShortcutCheck(requestId)) return;
-      setCheckState("error");
-      setCheckMsg(
-        error instanceof Error ? { raw: error.message } : { key: "settings.shortcut.checkFailed" },
-      );
-    }
-  };
-
-  const recorder = useShortcutRecorder({
-    onRecord: (shortcut) => {
-      if (shortcut === "") {
-        onChange("");
-        markShortcutCleared();
-      } else if (isValidGlobalShortcut(shortcut)) {
-        const configString = hotkeyToConfigString(shortcut, platform);
-        void runShortcutCheck(configString, true);
-      } else {
-        invalidateShortcutChecks();
-        setCheckState("warning");
-        setCheckMsg({ key: "settings.shortcut.needsModifier" });
-      }
-    },
-  });
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  const clearShortcut = () => {
-    // 显式清除会保存为空值，后端据此注销旧的全局快捷键绑定。
-    recorder.cancelRecording();
-    onChange("");
-    markShortcutCleared();
-  };
-
-  useEffect(() => {
-    if (!recorder.isRecording) return;
-    const handleClick = (e: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
-        recorder.cancelRecording();
-      }
-    };
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [recorder.isRecording, recorder.cancelRecording]);
-
-  const liveDisplay =
-    recorder.isRecording && recorder.heldKeys.length > 0
-      ? formatHeldKeys(recorder.heldKeys, platform)
-      : null;
-  const statusClass =
-    checkState === "ok"
-      ? "text-bamboo"
-      : checkState === "warning" || checkState === "error"
-        ? "text-red-400"
-        : "text-ink-ghost";
-  const isChecking = checkState === "checking";
-
-  return (
-    <div ref={containerRef} className="relative space-y-1.5">
-      <div className="flex gap-2">
-        <button
-          type="button"
-          onClick={() => recorder.startRecording()}
-          className={`min-w-0 flex-1 h-8 px-2.5 rounded-lg border text-[12px] flex items-center gap-2 cursor-pointer transition-colors ${
-            recorder.isRecording
-              ? "bg-bamboo-mist/40 border-bamboo"
-              : "bg-paper-warm/70 border-paper-deep/40 hover:border-paper-deep/60"
-          }`}
-        >
-          {recorder.isRecording ? (
-            <>
-              <span className="flex-1 min-w-0 text-left text-bamboo truncate">
-                {liveDisplay ||
-                  t("settings.shortcut.pressHint", {
-                    defaultValue: "按下快捷键；按 Delete 清空。",
-                  })}
-              </span>
-              <span className="text-[10px] text-ink-faint shrink-0">
-                {t("settings.shortcut.cancelHint", { defaultValue: "Esc 取消" })}
-              </span>
-            </>
-          ) : (
-            <>
-              <span
-                className={`flex-1 min-w-0 text-left truncate ${
-                  value ? "text-ink-soft" : "text-ink-ghost"
-                }`}
-              >
-                {value || t("settings.shortcut.notSet", { defaultValue: "未设置" })}
-              </span>
-              <span className="text-[10px] text-ink-ghost shrink-0">
-                {t("settings.shortcut.clickToRecord", { defaultValue: "点击录制" })}
-              </span>
-            </>
-          )}
-        </button>
-        <button
-          type="button"
-          disabled={!value || recorder.isRecording}
-          onClick={clearShortcut}
-          aria-label={t("settings.shortcut.clear", { defaultValue: "清除" })}
-          title={t("settings.shortcut.clear", { defaultValue: "清除" })}
-          className="w-8 h-8 rounded-lg border border-paper-deep/45 text-[15px] leading-none text-ink-faint hover:text-red-400 hover:bg-paper-warm/70 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
-        >
-          ×
-        </button>
-        <button
-          type="button"
-          disabled={!value || isChecking || recorder.isRecording}
-          onClick={() => void runShortcutCheck(value, false)}
-          className="h-8 px-3 rounded-lg border border-paper-deep/45 text-[11px] text-ink-faint hover:text-bamboo hover:bg-bamboo-mist/50 disabled:opacity-50 disabled:cursor-not-allowed transition-colors cursor-pointer"
-        >
-          {isChecking
-            ? t("settings.shortcut.checkingShort", { defaultValue: "检测中" })
-            : t("settings.shortcut.check", { defaultValue: "检测" })}
-        </button>
-      </div>
-      <p className={`min-h-4 text-[11px] ${statusClass}`}>{resolveMsg(checkMsg)}</p>
     </div>
   );
 }

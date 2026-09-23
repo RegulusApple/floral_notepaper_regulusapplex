@@ -1,4 +1,27 @@
 {
+  "desktopTasks": {
+    "mode": "內容模式",
+    "note": "便箋",
+    "tasks": "待辦",
+    "today": "今日",
+    "empty": "從一件小事開始。",
+    "add": "新增待辦",
+    "enterHint": "按 Enter 新增待辦",
+    "edit": "編輯",
+    "complete": "完成：{{text}}",
+    "uncomplete": "取消完成：{{text}}",
+    "delete": "刪除：{{text}}",
+    "reorder": "拖動排序；Alt + 上/下鍵調整順序",
+    "saveFailed": "儲存失敗，輸入已保留。",
+    "retry": "重試儲存",
+    "opacity": "不透明度",
+    "opacityHint": "5% 更透明 · 95% 更厚實",
+    "fallback": "透明材質",
+    "glassFallback": "目前系統未提供原生玻璃模糊效果。",
+    "shortcut": "喚出待辦快捷鍵",
+    "shortcutHint": "顯示並聚焦待辦，不重複建立視窗；可錄製或清除。",
+    "open": "開啟待辦"
+  },
   "about": {
     "closeTitle": "關閉關於",
     "contributors": "貢獻者",
@@ -92,6 +115,8 @@
     "unsafePath": "該路徑不安全：不能越過筆記根目錄、使用連結目錄或移入自身子目錄。"
   },
   "markdown": {
+    "taskCheck": "標記為已完成",
+    "taskUncheck": "標記為未完成",
     "copied": "已複製",
     "copy": "複製",
     "emptyHint": "預覽區會顯示目前筆記內容",
@@ -237,6 +262,20 @@
     }
   },
   "settings": {
+    "tiles": {
+      "style": "磁貼樣式",
+      "appearance": "果凍明暗",
+      "opacityHint": "每張磁貼獨立調整不透明度。Ctrl + 滾輪只調整滑鼠所在磁貼；數值越低越透明。",
+      "opacityFor": "{{title}} 的不透明度",
+      "empty": "建立磁貼筆記或釘住筆記後，可在這裡調整。",
+      "styles": {
+        "paper": "黃色玻璃",
+        "minimal": "白色玻璃",
+        "glass-blue": "藍色玻璃",
+        "floral-purple": "Floral 紫果凍",
+        "floral-green": "Floral 綠果凍"
+      }
+    },
     "autoSave": {
       "externalFile": "外部檔案自動儲存",
       "note": "自動儲存筆記",
@@ -298,7 +337,7 @@
     },
     "tileColor": {
       "custom": "自訂",
-      "followTheme": "跟隨主題",
+      "followTheme": "使用樣式配色",
       "label": "磁貼顏色"
     },
     "tileCtrlClose": "Ctrl+右鍵快速關閉磁貼",

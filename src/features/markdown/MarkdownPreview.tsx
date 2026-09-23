@@ -1,4 +1,4 @@
-import { useState, useCallback, useMemo } from "react";
+import { createContext, useContext, useState, useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -13,6 +13,7 @@ import type { Components } from "react-markdown";
 import "katex/dist/katex.min.css";
 import remarkAlerts from "./remarkAlerts";
 import { resolveMarkdownImageSrc } from "./imageSrc";
+import { remarkTaskPositions, rehypeTaskControls, toggleTaskMarker } from "./taskList";
 
 function CodeBlock({ children, language }: { children: React.ReactNode; language?: string }) {
   const { t } = useTranslation();
@@ -66,12 +67,13 @@ function extractText(node: React.ReactNode): string {
 
 interface MarkdownPreviewProps {
   content: string;
+  onContentChange?: (content: string) => void;
   fontSize?: number;
   renderHtml?: boolean;
   imageBaseDir?: string;
 }
 
-const remarkPlugins = [remarkGfm, remarkMath, remarkAlerts];
+const remarkPlugins = [remarkGfm, remarkMath, remarkAlerts, remarkTaskPositions];
 const sanitizeSchema = {
   ...defaultSchema,
   tagNames: [...(defaultSchema.tagNames ?? []), "mark", "center", "font", "u", "abbr"],
@@ -83,18 +85,58 @@ const sanitizeSchema = {
       "className",
       "data-alert-type",
       "dataAlertType",
+      "data-task-offset",
+      "data-task-checked",
+      "dataTaskOffset",
+      "dataTaskChecked",
     ],
     font: ["color", "size", "face"],
     abbr: ["title"],
   },
 };
-const rehypePluginsDefault = [rehypeKatex, rehypeSlug];
+const rehypePluginsDefault = [rehypeTaskControls, rehypeKatex, rehypeSlug];
 const rehypePluginsWithHtml = [
+  rehypeTaskControls,
   rehypeRaw,
   [rehypeSanitize, sanitizeSchema],
   rehypeKatex,
   rehypeSlug,
 ] as Parameters<typeof Markdown>[0]["rehypePlugins"];
+
+const TaskContext = createContext<{ content: string; onContentChange?: (content: string) => void }>(
+  { content: "" },
+);
+
+// Keep the component identity stable so a toggle does not remount the focused checkbox.
+const TaskCheckbox: NonNullable<Components["input"]> = ({ node, checked, type }) => {
+  const { content, onContentChange } = useContext(TaskContext);
+  const { t } = useTranslation();
+  const rawOffset = node?.properties?.["data-task-offset"] ?? node?.properties?.dataTaskOffset;
+  const offset = typeof rawOffset === "number" ? rawOffset : Number(rawOffset);
+  const htmlOffset = node?.position?.start.offset;
+  const rawHtmlInput = htmlOffset != null && content[htmlOffset] === "<";
+  const interactive =
+    !rawHtmlInput &&
+    type === "checkbox" &&
+    rawOffset != null &&
+    Number.isInteger(offset) &&
+    !!onContentChange;
+  return (
+    <input
+      type="checkbox"
+      checked={!!checked}
+      disabled={!interactive}
+      className="task-checkbox"
+      aria-label={t(checked ? "markdown.taskUncheck" : "markdown.taskCheck")}
+      onMouseDown={(event) => event.stopPropagation()}
+      onClick={(event) => event.stopPropagation()}
+      onDoubleClick={(event) => event.stopPropagation()}
+      onChange={(event) => {
+        if (interactive) onContentChange?.(toggleTaskMarker(content, offset, event.target.checked));
+      }}
+    />
+  );
+};
 
 function AlertIcon({ type }: { type: string }) {
   switch (type) {
@@ -195,17 +237,24 @@ const staticComponents: Components = {
   strong: ({ children }) => <strong className="font-semibold text-ink">{children}</strong>,
   em: ({ children }) => <em className="italic text-bamboo-light">{children}</em>,
   blockquote: Blockquote,
-  ul: ({ children }) => (
-    <ul className="ml-4 text-ink-soft leading-[1.9] list-disc list-outside marker:text-bamboo/40">
+  ul: ({ children, className = "" }) => (
+    <ul
+      className={`ml-4 text-ink-soft leading-[1.9] list-disc list-outside marker:text-bamboo/40 ${className}`}
+    >
       {children}
     </ul>
   ),
-  ol: ({ children }) => (
-    <ol className="ml-4 text-ink-soft leading-[1.9] list-decimal list-outside marker:text-bamboo/50 marker:font-mono marker:text-[0.85em]">
+  ol: ({ children, className = "", start }) => (
+    <ol
+      start={start}
+      className={`ml-4 text-ink-soft leading-[1.9] list-decimal list-outside marker:text-bamboo/50 marker:font-mono marker:text-[0.85em] ${className}`}
+    >
       {children}
     </ol>
   ),
-  li: ({ children }) => <li className="text-ink-soft leading-[1.9]">{children}</li>,
+  li: ({ children, className = "" }) => (
+    <li className={`text-ink-soft leading-[1.9] ${className}`}>{children}</li>
+  ),
   hr: () => (
     <hr className="my-6 border-none h-px bg-gradient-to-r from-transparent via-paper-deep to-transparent" />
   ),
@@ -272,13 +321,12 @@ const staticComponents: Components = {
   td: ({ children }) => (
     <td className="px-3 py-1.5 border border-paper-deep/35 text-ink-soft">{children}</td>
   ),
-  input: ({ checked, ...props }) => (
-    <input {...props} checked={checked} disabled className="mr-1.5 accent-bamboo" />
-  ),
+  input: TaskCheckbox,
 };
 
 export function MarkdownPreview({
   content,
+  onContentChange,
   fontSize = 14,
   renderHtml = false,
   imageBaseDir,
@@ -305,13 +353,15 @@ export function MarkdownPreview({
   return (
     <div className="font-body markdown-selectable" style={{ fontSize: `${fontSize}px` }}>
       {content.trim() ? (
-        <Markdown
-          remarkPlugins={remarkPlugins}
-          rehypePlugins={renderHtml ? rehypePluginsWithHtml : rehypePluginsDefault}
-          components={components}
-        >
-          {content}
-        </Markdown>
+        <TaskContext.Provider value={{ content, onContentChange }}>
+          <Markdown
+            remarkPlugins={remarkPlugins}
+            rehypePlugins={renderHtml ? rehypePluginsWithHtml : rehypePluginsDefault}
+            components={components}
+          >
+            {content}
+          </Markdown>
+        </TaskContext.Provider>
       ) : (
         <p className="text-ink-ghost leading-[1.9]">
           {t("markdown.emptyHint", { defaultValue: "预览区会显示当前笔记内容" })}

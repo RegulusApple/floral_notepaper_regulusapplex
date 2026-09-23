@@ -1,6 +1,7 @@
 pub mod desktop;
 pub mod json_io;
 pub mod locales;
+mod native_glass;
 pub mod services;
 pub mod updater;
 
@@ -65,6 +66,9 @@ fn notes_update(app: AppHandle, id: String, request: SaveNoteRequest) -> Result<
 fn notes_delete(app: AppHandle, id: String) -> Result<(), AppError> {
     default_store()?.delete_note(&id)?;
     let _ = app.emit("notes-changed", ());
+    if let Ok(config) = default_store()?.load_config() {
+        let _ = app.emit("config-changed", &config);
+    }
     Ok(())
 }
 
@@ -230,6 +234,55 @@ fn config_get() -> Result<AppConfig, AppError> {
 }
 
 #[tauri::command]
+fn config_set_tile_opacity(
+    app: AppHandle,
+    note_id: String,
+    opacity: f64,
+) -> Result<AppConfig, AppError> {
+    let saved = default_store()?.set_tile_opacity(&note_id, opacity)?;
+    let _ = app.emit("config-changed", &saved);
+    Ok(saved)
+}
+
+#[tauri::command]
+async fn set_tile_glass(
+    window: tauri::WebviewWindow,
+    enabled: bool,
+    dark: bool,
+) -> Result<String, AppError> {
+    let (send, receive) = tokio::sync::oneshot::channel();
+    let target = window.clone();
+    window.run_on_main_thread(move || {
+        let _ = send.send(native_glass::apply(&target, enabled, dark));
+    })?;
+    receive.await.map_err(|error| AppError {
+        code: "nativeGlass".into(),
+        message: error.to_string(),
+        details: Default::default(),
+    })?
+}
+
+#[tauri::command]
+fn todos_get() -> Result<services::todos::TodoState, AppError> {
+    services::todos::load()
+}
+
+#[tauri::command]
+fn todos_mutate(
+    app: AppHandle,
+    action: services::todos::TodoAction,
+) -> Result<services::todos::TodoState, AppError> {
+    let saved = services::todos::mutate(action)?;
+    let _ = app.emit("todos-changed", &saved);
+    Ok(saved)
+}
+
+#[tauri::command]
+async fn open_todo_window(app: AppHandle) -> Result<String, AppError> {
+    desktop::open_todo_window(&app)
+}
+
+#[tauri::command]
 fn notes_data_migration_notice() -> bool {
     take_data_migration_notice()
 }
@@ -286,7 +339,17 @@ fn config_save(app: AppHandle, config: AppConfig) -> Result<AppConfig, AppError>
             },
         }
     })?;
-    let saved = store.save_config(config)?;
+    let saved = match store.save_config(config.clone()) {
+        Ok(saved) => saved,
+        Err(error) => {
+            // A failed disk write must not leave different shortcuts active
+            // from the ones the next launch will read.
+            if let Err(rollback) = desktop::apply_runtime_config(&app, &config, &previous) {
+                eprintln!("failed to restore runtime configuration: {rollback}");
+            }
+            return Err(error);
+        }
+    };
     if let Err(error) = desktop::refresh_shell_state(&app, &saved) {
         eprintln!("failed to refresh desktop shell state: {error}");
     }
@@ -503,6 +566,11 @@ pub fn run() {
             images_get_base_dir,
             images_clean_unused,
             config_get,
+            config_set_tile_opacity,
+            set_tile_glass,
+            todos_get,
+            todos_mutate,
+            open_todo_window,
             notes_data_migration_notice,
             copy_background_image,
             config_save,

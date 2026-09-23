@@ -1,4 +1,27 @@
 {
+  "desktopTasks": {
+    "mode": "内容模式",
+    "note": "便签",
+    "tasks": "待办",
+    "today": "今日",
+    "empty": "从一件小事开始。",
+    "add": "添加待办",
+    "enterHint": "按 Enter 添加待办",
+    "edit": "编辑",
+    "complete": "完成：{{text}}",
+    "uncomplete": "取消完成：{{text}}",
+    "delete": "删除：{{text}}",
+    "reorder": "拖动排序；Alt + 上/下键调整顺序",
+    "saveFailed": "保存失败，输入已保留。",
+    "retry": "重试保存",
+    "opacity": "不透明度",
+    "opacityHint": "5% 更透明 · 95% 更厚实",
+    "fallback": "透明材质",
+    "glassFallback": "当前系统未提供原生玻璃模糊效果。",
+    "shortcut": "呼出待办快捷键",
+    "shortcutHint": "显示并聚焦待办，不重复创建窗口；可录制或清除。",
+    "open": "打开待办"
+  },
   "about": {
     "closeTitle": "关闭关于",
     "contributors": "贡献者",
@@ -92,6 +115,8 @@
     "unsafePath": "该路径不安全：不能越过笔记根目录、使用链接目录或移入自身子目录。"
   },
   "markdown": {
+    "taskCheck": "标记为已完成",
+    "taskUncheck": "标记为未完成",
     "copied": "已复制",
     "copy": "复制",
     "emptyHint": "预览区会显示当前笔记内容",
@@ -237,6 +262,20 @@
     }
   },
   "settings": {
+    "tiles": {
+      "style": "磁贴样式",
+      "appearance": "果冻明暗",
+      "opacityHint": "每张磁贴独立调整不透明度。Ctrl + 滚轮只调整鼠标所在磁贴；数值越低越透明。",
+      "opacityFor": "{{title}} 的不透明度",
+      "empty": "创建磁贴笔记或钉住笔记后，可在这里调整。",
+      "styles": {
+        "paper": "黄色玻璃",
+        "minimal": "白色玻璃",
+        "glass-blue": "蓝色玻璃",
+        "floral-purple": "Floral 紫果冻",
+        "floral-green": "Floral 绿果冻"
+      }
+    },
     "autoSave": {
       "externalFile": "外部文件自动保存",
       "note": "自动保存笔记",
@@ -298,7 +337,7 @@
     },
     "tileColor": {
       "custom": "自定义",
-      "followTheme": "跟随主题",
+      "followTheme": "使用样式配色",
       "label": "磁贴颜色"
     },
     "tileCtrlClose": "Ctrl+右键快速关闭磁贴",

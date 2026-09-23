@@ -3,6 +3,8 @@ export type ViewMode = "edit" | "split" | "preview";
 export type ThemeOption = "light" | "dark" | "system";
 
 export type TileColorMode = "system" | "custom";
+export type TileStyle = "paper" | "minimal" | "glass-blue" | "floral-purple" | "floral-green";
+export type TileAppearance = "system" | "light" | "dark";
 export type BackgroundFit = "cover" | "contain" | "repeat";
 
 export interface AppConfig {
@@ -16,6 +18,9 @@ export interface AppConfig {
   noteSurfaceAutoSave: boolean;
   tileColor: string;
   tileColorMode: TileColorMode;
+  tileStyle?: TileStyle;
+  tileAppearance?: TileAppearance;
+  tileOpacityByNoteId?: Record<string, number>;
   theme: ThemeOption;
   fontSize: number;
   surfaceFontSize: number;
@@ -31,6 +36,7 @@ export interface AppConfig {
   surfaceWidth?: number;
   surfaceHeight?: number;
   toggleVisibilityShortcut: string;
+  todoShortcut?: string;
   openAtCursor: boolean;
   backgroundImagePath?: string;
   backgroundFit?: BackgroundFit;

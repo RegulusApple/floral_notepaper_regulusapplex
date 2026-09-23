@@ -1220,7 +1220,7 @@ dependencies = [
 
 [[package]]
 name = "floral-notepaper-regulusapplex"
-version = "1.2.1"
+version = "1.4.0"
 dependencies = [
  "block2",
  "chrono",
@@ -1249,7 +1249,9 @@ dependencies = [
  "trash",
  "uuid",
  "webview2-com",
+ "windows 0.61.3",
  "windows-core 0.61.2",
+ "windows-numerics",
  "windows-sys 0.59.0",
 ]
 

@@ -12,6 +12,7 @@ import type { Note, NoteMetadata } from "../features/notes/types";
 import { countNoteChars, metadataFromNote } from "../features/notes/noteUtils";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
+import { invoke } from "@tauri-apps/api/core";
 import {
   animateCurrentWindowBounds,
   closeCurrentWindow,
@@ -24,13 +25,12 @@ import {
   startCurrentWindowResize,
 } from "../features/windows/controls";
 import type { ResizeDirection } from "../features/windows/controls";
-import { getConfig } from "../features/settings/api";
-import {
-  DEFAULT_TILE_COLOR,
-  normalizeTileColor,
-  resolveTileColor,
-} from "../features/settings/tileColor";
-import type { TileColorMode } from "../features/settings/types";
+import { getConfig, saveTileOpacity } from "../features/settings/api";
+import { DEFAULT_TILE_COLOR, normalizeTileColor } from "../features/settings/tileColor";
+import type { AppConfig } from "../features/settings/types";
+import { useTileOpacity } from "../features/settings/useTileOpacity";
+import { useSystemDark } from "../features/settings/useSystemDark";
+import { resolveTileAppearance } from "../features/settings/tileAppearance";
 import {
   shouldEnterPadFromTileOnDoubleClick,
   shouldReturnToTileAfterManualSave,
@@ -52,6 +52,9 @@ import {
 } from "../features/windows/tileWindowEvents";
 import { NotepadOpenPanel } from "./NotepadOpenPanel";
 import { Tile } from "./Tile";
+import { GlassSurface, type WorkspaceMode } from "./GlassSurface";
+import { TodoPanel, type TodoPanelHandle } from "../features/todos/TodoPanel";
+import { useTodos } from "../features/todos/store";
 
 type OpenMode = "new" | "open";
 type NotePadStatus = "empty" | "opened" | "saved" | "dirty" | "saveFailed" | "copied";
@@ -126,6 +129,25 @@ export function NotePad({
   initialTileColor = DEFAULT_TILE_COLOR,
 }: NotePadProps) {
   const { t } = useTranslation();
+  const [workspaceMode, setWorkspaceMode] = useState<WorkspaceMode>(() => {
+    if (new URLSearchParams(window.location.search).get("workspace") === "todo") return "todo";
+    try {
+      return localStorage.getItem(`workspace:${getCurrentWindow().label}`) === "todo"
+        ? "todo"
+        : "note";
+    } catch {
+      return "note";
+    }
+  });
+  const [todoActivated, setTodoActivated] = useState(workspaceMode === "todo");
+  const todos = useTodos(todoActivated);
+  const todoPanelRef = useRef<TodoPanelHandle>(null);
+  const [nativeMaterial, setNativeMaterial] = useState("pending");
+  const workspaceModeRef = useRef(workspaceMode);
+  workspaceModeRef.current = workspaceMode;
+  const allowCloseRef = useRef(false);
+  const tileOpacityRef = useRef(0.45);
+  const flushOpacityRef = useRef<() => Promise<void>>(async () => {});
   const [surfaceMode, setSurfaceMode] = useState<NoteSurfaceMode>(initialSurfaceMode);
   const [mode, setMode] = useState<OpenMode>("new");
   const [notes, setNotes] = useState<NoteMetadata[]>([]);
@@ -134,15 +156,15 @@ export function NotePad({
   const [content, setContent] = useState("");
   const [status, setStatus] = useState<NotePadStatus>("empty");
   const [noteSurfaceAutoSave, setNoteSurfaceAutoSave] = useState(initialAutoSave);
-  const [tileColorRaw, setTileColorRaw] = useState(normalizeTileColor(initialTileColor));
-  const [tileColorMode, setTileColorMode] = useState<TileColorMode>("system");
+  const [tileConfig, setTileConfig] = useState<Partial<AppConfig>>({
+    tileColor: normalizeTileColor(initialTileColor),
+  });
   const [surfaceFontSize, setSurfaceFontSize] = useState(14);
+  const systemDark = useSystemDark();
+  const darkGlass = resolveTileAppearance(tileConfig, systemDark).foreground === "#f7fafc";
   const [tileRenderMarkdown, setTileRenderMarkdown] = useState(false);
   const [tileDoubleClickToEdit, setTileDoubleClickToEdit] = useState(false);
   const [tileSaveReturnsToPin, setTileSaveReturnsToPin] = useState(false);
-  const [tileColor, setTileColor] = useState(() =>
-    resolveTileColor("system", normalizeTileColor(initialTileColor)),
-  );
   const [isExiting, setIsExiting] = useState(false);
   const titleRef = useRef<HTMLInputElement>(null);
   const contentRef = useRef<HTMLTextAreaElement>(null);
@@ -153,10 +175,12 @@ export function NotePad({
   contentValueRef.current = content;
   const titleValueRef = useRef(title);
   titleValueRef.current = title;
-  const tileColorModeRef = useRef(tileColorMode);
-  tileColorModeRef.current = tileColorMode;
-  const tileColorRawRef = useRef(tileColorRaw);
-  tileColorRawRef.current = tileColorRaw;
+  const editingNoteIdRef = useRef(editingNoteId);
+  editingNoteIdRef.current = editingNoteId;
+  const savingRef = useRef(false);
+  const saveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
+  const pendingSavesRef = useRef(0);
+  const draftGenerationRef = useRef(0);
   const isStandby = useRef(
     typeof window !== "undefined" &&
       new URLSearchParams(window.location.search).get("standby") === "1",
@@ -195,6 +219,11 @@ export function NotePad({
   }, []);
 
   const applyNote = useCallback((note: Note) => {
+    draftGenerationRef.current += 1;
+    editingNoteIdRef.current = note.id;
+    contentValueRef.current = note.content;
+    titleValueRef.current = note.title;
+    statusRef.current = "opened";
     setEditingNoteId(note.id);
     setTitle(note.title);
     setContent(note.content);
@@ -214,11 +243,7 @@ export function NotePad({
           setTileRenderMarkdown(loadedConfig.tileRenderMarkdown ?? false);
           setTileDoubleClickToEdit(loadedConfig.tileDoubleClickToEdit ?? false);
           setTileSaveReturnsToPin(loadedConfig.tileSaveReturnsToPin ?? false);
-          setTileColorRaw(normalizeTileColor(loadedConfig.tileColor));
-          setTileColorMode(loadedConfig.tileColorMode ?? "system");
-          setTileColor(
-            resolveTileColor(loadedConfig.tileColorMode ?? "system", loadedConfig.tileColor),
-          );
+          setTileConfig(loadedConfig);
         }
         if (initialNoteId) {
           const note = await getNote(initialNoteId);
@@ -236,13 +261,27 @@ export function NotePad({
   }, [applyNote, initialNoteId, refreshNotes]);
 
   useEffect(() => {
+    let active = true;
+    let epoch = 0;
     const unlisten = listen("notes-changed", () => {
       void refreshNotes().catch(() => undefined);
+      const id = editingNoteIdRef.current;
+      const ticket = ++epoch;
+      const dirty = () =>
+        savingRef.current || statusRef.current === "dirty" || statusRef.current === "saveFailed";
+      if (!id || dirty() || dormantRef.current) return;
+      void getNote(id)
+        .then((note) => {
+          if (active && ticket === epoch && editingNoteIdRef.current === id && !dirty())
+            applyNote(note);
+        })
+        .catch(() => undefined);
     });
     return () => {
+      active = false;
       void unlisten.then((fn) => fn());
     };
-  }, [refreshNotes]);
+  }, [refreshNotes, applyNote]);
 
   useEffect(() => {
     if (isStandby.current) return;
@@ -263,19 +302,9 @@ export function NotePad({
   }, []);
 
   useEffect(() => {
-    const unlisten = listen<{
-      tileColor?: string;
-      tileColorMode?: TileColorMode;
-      surfaceFontSize?: number;
-      tileRenderMarkdown?: boolean;
-      tileDoubleClickToEdit?: boolean;
-      tileSaveReturnsToPin?: boolean;
-    }>("config-changed", (event) => {
-      const mode = event.payload.tileColorMode ?? tileColorModeRef.current;
-      const raw = event.payload.tileColor ?? tileColorRawRef.current;
-      setTileColorMode(mode);
-      setTileColorRaw(normalizeTileColor(raw));
-      setTileColor(resolveTileColor(mode, raw));
+    const unlisten = listen<AppConfig>("config-changed", (event) => {
+      setTileConfig(event.payload);
+      setNoteSurfaceAutoSave(event.payload.noteSurfaceAutoSave);
       if (event.payload.surfaceFontSize != null) setSurfaceFontSize(event.payload.surfaceFontSize);
       if (event.payload.tileRenderMarkdown != null)
         setTileRenderMarkdown(event.payload.tileRenderMarkdown);
@@ -290,16 +319,25 @@ export function NotePad({
   }, []);
 
   useEffect(() => {
-    if (tileColorMode !== "system") return;
-    const observer = new MutationObserver(() => {
-      setTileColor(resolveTileColor("system", tileColorRaw));
-    });
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: ["data-theme"],
-    });
-    return () => observer.disconnect();
-  }, [tileColorMode, tileColorRaw]);
+    let active = true;
+    const apply = () =>
+      invoke<string>("set_tile_glass", { enabled: true, dark: darkGlass })
+        .then((material) => {
+          if (active) setNativeMaterial(material ?? "pending");
+        })
+        .catch((error) => {
+          if (active) {
+            setNativeMaterial("transparent");
+            showToast(getErrorMessage(error));
+          }
+        });
+    void apply();
+    const unlisten = listen("tauri://focus", () => void apply());
+    return () => {
+      active = false;
+      void unlisten.then((stop) => stop());
+    };
+  }, [darkGlass, workspaceMode]);
 
   useEffect(() => {
     let myLabel = "";
@@ -316,6 +354,8 @@ export function NotePad({
       isStandby.current = false;
       dormantRef.current = false;
       hasEnteredOnce.current = true;
+      draftGenerationRef.current += 1;
+      editingNoteIdRef.current = null;
       setEditingNoteId(null);
       setTitle("");
       setContent("");
@@ -323,6 +363,7 @@ export function NotePad({
       setStatus("empty");
       setIsExiting(false);
       setSurfaceMode("pad");
+      setWorkspaceMode("note");
       void refreshNotes().catch(() => undefined);
       void showCurrentWindow()
         .then(() => contentRef.current?.focus())
@@ -333,26 +374,64 @@ export function NotePad({
     };
   }, [refreshNotes]);
 
-  const saveNote = useCallback(async () => {
-    const existingCategory = notes.find((n) => n.id === editingNoteId)?.category ?? "";
-    const request = { title, content, category: editingNoteId ? existingCategory : "tiles" };
-    const note = editingNoteId
-      ? await updateNote(editingNoteId, request)
-      : await createNote(request);
+  const saveNote = useCallback(() => {
+    const generation = draftGenerationRef.current;
+    const requestedId = editingNoteIdRef.current;
+    const titleSnapshot = titleValueRef.current;
+    const contentSnapshot = contentValueRef.current;
+    const draftOpacity = tileOpacityRef.current;
+    const existingCategory = notes.find((n) => n.id === requestedId)?.category ?? "";
+    pendingSavesRef.current += 1;
+    savingRef.current = true;
+    const run = saveQueueRef.current
+      .catch(() => undefined)
+      .then(async () => {
+        try {
+          const stillCurrent = () => draftGenerationRef.current === generation;
+          // A previous queued save may already have created this draft.
+          const id = requestedId ?? (stillCurrent() ? editingNoteIdRef.current : null);
+          const request = {
+            title: titleSnapshot,
+            content: contentSnapshot,
+            category: requestedId ? existingCategory : "tiles",
+          };
+          const note = id ? await updateNote(id, request) : await createNote(request);
 
-    setEditingNoteId(note.id);
-    setNotes((current) => {
-      const metadata = metadataFromNote(note);
-      const exists = current.some((item) => item.id === note.id);
-      const next = exists
-        ? current.map((item) => (item.id === note.id ? metadata : item))
-        : [metadata, ...current];
-      return [...next].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
-    });
-    const contentChanged = contentValueRef.current !== content || titleValueRef.current !== title;
-    setStatus(contentChanged ? "dirty" : "saved");
-    return note;
-  }, [content, editingNoteId, notes, title]);
+          if (stillCurrent()) {
+            setEditingNoteId(note.id);
+            editingNoteIdRef.current = note.id;
+          }
+          if (!id && draftOpacity !== 0.45) await saveTileOpacity(note.id, draftOpacity);
+          setNotes((current) => {
+            const metadata = metadataFromNote(note);
+            const exists = current.some((item) => item.id === note.id);
+            const next = exists
+              ? current.map((item) => (item.id === note.id ? metadata : item))
+              : [metadata, ...current];
+            return [...next].sort((left, right) => right.createdAt.localeCompare(left.createdAt));
+          });
+          if (stillCurrent()) {
+            const contentChanged =
+              contentValueRef.current !== contentSnapshot ||
+              titleValueRef.current !== titleSnapshot;
+            statusRef.current = contentChanged ? "dirty" : "saved";
+            setStatus(contentChanged ? "dirty" : "saved");
+          }
+          return note;
+        } catch (error) {
+          if (draftGenerationRef.current === generation) {
+            statusRef.current = "saveFailed";
+            setStatus("saveFailed");
+          }
+          throw error;
+        } finally {
+          pendingSavesRef.current -= 1;
+          savingRef.current = pendingSavesRef.current > 0;
+        }
+      });
+    saveQueueRef.current = run.catch(() => undefined);
+    return run;
+  }, [notes]);
 
   // 通过 ref 持有最新的 saveNote，让下方的 Tauri 监听只注册一次，
   // 避免每次输入（content 变化）都注销再重注册事件监听
@@ -363,7 +442,13 @@ export function NotePad({
     const unlisten = listen<UpdateInstallPrepareRequest>("update://prepare-install", (event) => {
       const respond = async () => {
         const windowLabel = windowLabelRef.current || "notepad";
-        if (statusRef.current !== "dirty") {
+        await todoPanelRef.current?.flush();
+        await flushOpacityRef.current();
+        if (
+          statusRef.current !== "dirty" &&
+          statusRef.current !== "saveFailed" &&
+          !savingRef.current
+        ) {
           await reportInstallPreparation(event.payload.requestId, windowLabel, "ready");
           return;
         }
@@ -372,7 +457,6 @@ export function NotePad({
           await saveNoteRef.current();
           await reportInstallPreparation(event.payload.requestId, windowLabel, "ready");
         } catch (error) {
-          setStatus("saveFailed");
           showToast(getErrorMessage(error));
           await reportInstallPreparation(
             event.payload.requestId,
@@ -429,6 +513,13 @@ export function NotePad({
   });
 
   const tileNoteId = editingNoteId ?? initialNoteId ?? "";
+  const [tileOpacity, changeTileOpacity, flushTileOpacity] = useTileOpacity(
+    tileNoteId,
+    tileConfig.tileOpacityByNoteId?.[tileNoteId],
+    (error) => showToast(getErrorMessage(error)),
+  );
+  tileOpacityRef.current = tileOpacity;
+  flushOpacityRef.current = flushTileOpacity;
 
   const switchSurfaceMode = useCallback(
     async (nextMode: NoteSurfaceMode) => {
@@ -487,7 +578,6 @@ export function NotePad({
           await switchSurfaceMode("tile");
         }
       } catch (error) {
-        setStatus("saveFailed");
         showToast(getErrorMessage(error));
       }
     },
@@ -563,7 +653,9 @@ export function NotePad({
     function handleKeyDown(event: KeyboardEvent) {
       if ((event.ctrlKey || event.metaKey) && event.key === "s") {
         event.preventDefault();
-        void handleSaveRef.current();
+        if (workspaceModeRef.current === "todo")
+          void todoPanelRef.current?.flush().catch((error) => showToast(getErrorMessage(error)));
+        else void handleSaveRef.current();
       }
     }
 
@@ -592,10 +684,34 @@ export function NotePad({
     }
   };
 
-  const handleClose = useCallback(() => {
+  const handleClose = useCallback(async () => {
+    try {
+      await todoPanelRef.current?.flush();
+      await flushOpacityRef.current();
+    } catch (error) {
+      showToast(getErrorMessage(error));
+      return;
+    }
+    if (savingRef.current || statusRef.current === "dirty" || statusRef.current === "saveFailed") {
+      try {
+        await saveNote();
+      } catch (error) {
+        showToast(getErrorMessage(error));
+        return;
+      }
+      // A new click while the close-save was in flight must remain on screen.
+      if (statusRef.current !== "saved") return;
+    }
     setIsExiting(true);
+    if (windowLabelRef.current === "todo") {
+      await getCurrentWindow().hide();
+      setIsExiting(false);
+      return;
+    }
     if (surfaceMode === "tile") {
+      allowCloseRef.current = true;
       void closeCurrentWindow().catch((error) => {
+        allowCloseRef.current = false;
         setIsExiting(false);
         showToast(getErrorMessage(error));
       });
@@ -607,6 +723,8 @@ export function NotePad({
     dormantRef.current = true;
     void recycleCurrentNotepad()
       .then(() => {
+        draftGenerationRef.current += 1;
+        editingNoteIdRef.current = null;
         setEditingNoteId(null);
         setTitle("");
         setContent("");
@@ -620,7 +738,43 @@ export function NotePad({
         setIsExiting(false);
         showToast(getErrorMessage(error));
       });
-  }, [surfaceMode]);
+  }, [surfaceMode, saveNote]);
+
+  const changeWorkspace = useCallback(async (next: WorkspaceMode) => {
+    try {
+      if (next === workspaceModeRef.current) {
+        if (next === "todo") todoPanelRef.current?.focus();
+        return;
+      }
+      if (next === "note") await todoPanelRef.current?.flush();
+      if (next === "todo") {
+        setTodoActivated(true);
+        const bounds = await getCurrentWindowBounds();
+        const scale = (await getCurrentWindow().scaleFactor?.()) ?? 1;
+        if (bounds.width < 400 * scale || bounds.height < 360 * scale) {
+          await animateCurrentWindowBounds(
+            {
+              ...bounds,
+              width: Math.max(Math.round(400 * scale), bounds.width),
+              height: Math.max(Math.round(360 * scale), bounds.height),
+            },
+            0,
+          );
+        }
+      }
+      setWorkspaceMode(next);
+      localStorage.setItem(`workspace:${windowLabelRef.current}`, next);
+      if (next === "todo") todoPanelRef.current?.focus();
+    } catch (error) {
+      showToast(getErrorMessage(error));
+    }
+  }, []);
+  useEffect(() => {
+    const stop = listen("workspace:todo", () => void changeWorkspace("todo"));
+    return () => {
+      void stop.then((unlisten) => unlisten());
+    };
+  }, [changeWorkspace]);
 
   const copyTileContent = useCallback(async () => {
     try {
@@ -629,7 +783,7 @@ export function NotePad({
         throw new Error(t("notepad.error.copyUnsupported", { defaultValue: "当前环境不支持复制" }));
       }
       await clipboard.writeText(content);
-      setStatus("copied");
+      if (statusRef.current !== "dirty" && statusRef.current !== "saveFailed") setStatus("copied");
     } catch (error) {
       showToast(getErrorMessage(error));
     }
@@ -637,6 +791,18 @@ export function NotePad({
 
   const handleCloseRef = useRef(handleClose);
   handleCloseRef.current = handleClose;
+  useEffect(() => {
+    const current = getCurrentWindow();
+    if (!current.onCloseRequested) return;
+    const stop = current.onCloseRequested((event) => {
+      if (allowCloseRef.current) return;
+      event.preventDefault();
+      void handleCloseRef.current();
+    });
+    return () => {
+      void stop.then((unlisten) => unlisten());
+    };
+  }, []);
   const copyTileContentRef = useRef(copyTileContent);
   copyTileContentRef.current = copyTileContent;
   const switchSurfaceModeRef = useRef(switchSurfaceMode);
@@ -686,7 +852,7 @@ export function NotePad({
 
   const handleDrag = (event: MouseEvent<HTMLElement>) => {
     const target = event.target as HTMLElement;
-    if (target.closest("button,input,textarea")) return;
+    if (target.closest("button,input,textarea,select,a,.markdown-selectable")) return;
 
     if (surfaceMode === "tile" && tileDoubleClickToEdit) {
       if (event.button !== 0 || event.detail > 1) return;
@@ -702,6 +868,8 @@ export function NotePad({
   };
 
   const resetDraft = () => {
+    draftGenerationRef.current += 1;
+    editingNoteIdRef.current = null;
     setEditingNoteId(null);
     setTitle("");
     setContent("");
@@ -710,213 +878,222 @@ export function NotePad({
   };
 
   const isTile = surfaceMode === "tile";
+  // Switching content must not turn two independently tinted note surfaces
+  // into views controlled by one global opacity. Only the dedicated task
+  // window uses the task store's own material preference.
+  const usesTodoOpacity = windowLabelRef.current === "todo" && workspaceMode === "todo";
   const tileTitle = title.trim();
-  const enterClass = hasEnteredOnce.current ? "" : "animate-window-enter";
-  const surfaceWrapperClassName = `w-full h-screen flex flex-col bg-transparent p-0 ${isExiting ? "animate-window-exit" : enterClass}`;
+  const surfaceWrapperClassName = `w-full h-screen ${isExiting ? "pointer-events-none" : ""}`;
   const padSurfaceClassName =
-    "app-surface-frame relative noise-bg w-full h-full min-h-0 bg-cloud overflow-hidden flex flex-col flex-1 border border-paper-deep/70 shadow-[0_1px_10px_rgba(26,26,24,0.06)] transition-all duration-200 ease-out";
+    "surface-pad relative w-full min-h-0 overflow-hidden flex flex-col flex-1";
 
   return (
-    <div className={surfaceWrapperClassName}>
-      {isTile ? (
-        <Tile
-          title={tileTitle || undefined}
-          content={content}
-          color={tileColor}
-          fontSize={surfaceFontSize}
-          renderMarkdown={tileRenderMarkdown}
-          imageBaseDir={imageBaseDir ?? undefined}
-          width="100%"
-          className="h-full cursor-default"
-          data-surface-mode={surfaceMode}
-          data-context-menu="tile"
-          data-note-id={tileNoteId}
-          onMouseDown={handleDrag}
-          onDoubleClick={handleTileDoubleClick}
-        >
-          <button
-            type="button"
-            aria-label="取消钉屏"
-            title="取消钉屏"
-            onMouseDown={(event) => event.stopPropagation()}
-            onClick={() => void handleClose()}
-            className="absolute top-2 right-2 z-10 w-6 h-6 flex items-center justify-center rounded-full text-ink-ghost/70 hover:text-red-400 hover:bg-danger-bg/80 transition-colors cursor-pointer"
+    <GlassSurface
+      config={tileConfig}
+      opacity={usesTodoOpacity ? todos.state.opacity : tileOpacity}
+      changeOpacity={
+        usesTodoOpacity
+          ? (next) =>
+              todos.client.dispatch({
+                type: "opacity",
+                value: typeof next === "function" ? next(todos.state.opacity) : next,
+              })
+          : changeTileOpacity
+      }
+      mode={workspaceMode}
+      changeMode={(next) => void changeWorkspace(next)}
+      onClose={() => void handleClose()}
+      material={nativeMaterial}
+      className={surfaceWrapperClassName}
+    >
+      {todoActivated && (
+        <TodoPanel ref={todoPanelRef} model={todos} active={workspaceMode === "todo"} />
+      )}
+      <div className="surface-note-view" hidden={workspaceMode !== "note"}>
+        {isTile ? (
+          <Tile
+            bare
+            title={tileTitle || undefined}
+            content={content}
+            config={tileConfig}
+            opacity={tileOpacity}
+            onContentChange={(next) => {
+              contentValueRef.current = next;
+              statusRef.current = "dirty";
+              setContent(next);
+              setStatus("dirty");
+            }}
+            fontSize={surfaceFontSize}
+            renderMarkdown={tileRenderMarkdown}
+            imageBaseDir={imageBaseDir ?? undefined}
+            width="100%"
+            className="h-full cursor-default"
+            data-surface-mode={surfaceMode}
+            data-context-menu="tile"
+            data-note-id={tileNoteId}
+            onMouseDown={handleDrag}
+            onDoubleClick={handleTileDoubleClick}
           >
-            <svg
-              width="12"
-              height="12"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-            >
-              <path d="M18 6L6 18M6 6l12 12" />
-            </svg>
-          </button>
-          <SurfaceResizeHandles />
-        </Tile>
-      ) : (
-        <div className={padSurfaceClassName} data-surface-mode={surfaceMode}>
-          <>
-            <div
-              className="flex items-center justify-between px-4 pt-3 pb-0 cursor-default"
-              onMouseDown={handleDrag}
-            >
-              <div className="flex items-center gap-0.5">
-                <button
-                  onClick={resetDraft}
-                  className={`relative px-3.5 py-1.5 text-[13px] rounded-t-lg transition-all duration-200 cursor-pointer ${
-                    mode === "new"
-                      ? "text-bamboo font-medium"
-                      : "text-ink-ghost hover:text-ink-faint"
-                  }`}
-                >
-                  {editingNoteId ? tabLabels.edit : tabLabels.new}
-                  {mode === "new" && (
-                    <div className="absolute bottom-0 left-3 right-3 h-[2px] bg-bamboo rounded-full" />
-                  )}
-                </button>
-                <button
-                  onClick={() => setMode("open")}
-                  className={`relative px-3.5 py-1.5 text-[13px] rounded-t-lg transition-all duration-200 cursor-pointer ${
-                    mode === "open"
-                      ? "text-bamboo font-medium"
-                      : "text-ink-ghost hover:text-ink-faint"
-                  }`}
-                >
-                  {tabLabels.open}
-                  {mode === "open" && (
-                    <div className="absolute bottom-0 left-3 right-3 h-[2px] bg-bamboo rounded-full" />
-                  )}
-                </button>
-              </div>
-
-              <div className="ml-auto flex items-center gap-1.5">
-                <button
-                  onClick={() => void handlePin()}
-                  className="group w-7 h-7 flex items-center justify-center rounded-lg transition-all duration-200 cursor-pointer text-ink-ghost hover:text-ink-faint hover:bg-paper-warm"
-                  title={t("notepad.tooltip.pinToTile", { defaultValue: "转为磁贴" })}
-                >
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M12 17v5" />
-                    <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1 1 1 0 0 1 1 1z" />
-                  </svg>
-                </button>
-
-                <button
-                  onClick={() => void handleClose()}
-                  className="group w-7 h-7 flex items-center justify-center rounded-lg text-ink-ghost hover:bg-danger-bg hover:text-red-400 transition-all duration-200 cursor-pointer"
-                  title={t("notepad.tooltip.close", { defaultValue: "关闭" })}
-                >
-                  <svg
-                    width="13"
-                    height="13"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                  >
-                    <path d="M18 6L6 18M6 6l12 12" />
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            <div className="mx-4 mt-1 h-px bg-paper-deep/50" />
-
-            {mode === "new" ? (
-              <div
-                data-pad-editor-body="true"
-                className="px-4 pt-3 pb-2 flex flex-col flex-1 min-h-0"
+            <button className="surface-edit-note" onClick={() => void switchSurfaceMode("pad")}>
+              {t("desktopTasks.edit")}
+            </button>
+            {(status === "dirty" || status === "saveFailed") && (
+              <button
+                className="absolute bottom-2 right-3 text-[11px] px-2 py-1 rounded border border-current cursor-pointer"
+                onMouseDown={(event) => event.stopPropagation()}
+                onClick={() => void handleSave()}
               >
-                <input
-                  ref={titleRef}
-                  type="text"
-                  value={title}
-                  onChange={(event) => {
-                    setTitle(event.target.value);
-                    setStatus("dirty");
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" || event.key === "ArrowDown") {
-                      event.preventDefault();
-                      contentRef.current?.focus();
-                    }
-                  }}
-                  placeholder={t("notepad.placeholder.title", { defaultValue: "标题（可选）" })}
-                  className="w-full font-display font-medium text-ink placeholder:text-ink-ghost/60 mb-2 tracking-wide shrink-0"
-                  style={{ fontSize: `${surfaceFontSize}px` }}
-                />
+                {statusLabel[status]} · {t("common.save")}
+              </button>
+            )}
+          </Tile>
+        ) : (
+          <div className={padSurfaceClassName} data-surface-mode={surfaceMode}>
+            <>
+              <div
+                className="flex items-center justify-between px-4 pt-3 pb-0 cursor-default"
+                onMouseDown={handleDrag}
+              >
+                <div className="flex items-center gap-0.5">
+                  <button
+                    onClick={resetDraft}
+                    className={`relative px-3.5 py-1.5 text-[13px] rounded-t-lg transition-all duration-200 cursor-pointer ${
+                      mode === "new"
+                        ? "text-bamboo font-medium"
+                        : "text-ink-ghost hover:text-ink-faint"
+                    }`}
+                  >
+                    {editingNoteId ? tabLabels.edit : tabLabels.new}
+                    {mode === "new" && (
+                      <div className="absolute bottom-0 left-3 right-3 h-[2px] bg-bamboo rounded-full" />
+                    )}
+                  </button>
+                  <button
+                    onClick={() => setMode("open")}
+                    className={`relative px-3.5 py-1.5 text-[13px] rounded-t-lg transition-all duration-200 cursor-pointer ${
+                      mode === "open"
+                        ? "text-bamboo font-medium"
+                        : "text-ink-ghost hover:text-ink-faint"
+                    }`}
+                  >
+                    {tabLabels.open}
+                    {mode === "open" && (
+                      <div className="absolute bottom-0 left-3 right-3 h-[2px] bg-bamboo rounded-full" />
+                    )}
+                  </button>
+                </div>
 
-                <textarea
-                  ref={contentRef}
-                  data-tab-indent="true"
-                  value={content}
-                  onChange={(event) => {
-                    setContent(event.target.value);
-                    setStatus("dirty");
-                  }}
-                  onPaste={imagePasteHandler}
-                  onDrop={imageDropHandler}
-                  onDragOver={imageDragOverHandler}
-                  onKeyDown={(event) => {
-                    if (event.key === "ArrowUp") {
-                      const ta = contentRef.current;
-                      if (ta && ta.selectionStart === ta.selectionEnd) {
-                        const textBeforeCursor = content.slice(0, ta.selectionStart);
-                        if (!textBeforeCursor.includes("\n")) {
-                          event.preventDefault();
-                          titleRef.current?.focus();
-                        }
-                      }
-                    }
-                  }}
-                  placeholder={t("notepad.placeholder.content", { defaultValue: "写点什么……" })}
-                  className="w-full flex-1 min-h-0 pb-2 leading-relaxed text-ink-soft font-body placeholder:text-ink-ghost/50"
-                  style={{ fontSize: `${surfaceFontSize}px`, tabSize: `var(--tab-indent-size, 2)` }}
-                />
-
-                <div className="flex items-center justify-between mt-auto pt-2 border-t border-paper-deep/30 shrink-0">
-                  <span className="text-[11px] text-ink-ghost font-mono tabular-nums truncate max-w-[170px]">
-                    {`${countNoteChars(content)} ${t("common.wordCountUnit", { defaultValue: "字" })} · ${statusLabel[status]}`}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={resetDraft}
-                      className="px-4 py-1.5 text-[12px] text-ink-faint hover:text-ink-soft rounded-lg hover:bg-paper-warm transition-all duration-200 cursor-pointer"
+                <div className="ml-auto flex items-center gap-1.5">
+                  <button
+                    onClick={() => void handlePin()}
+                    className="group w-7 h-7 flex items-center justify-center rounded-lg transition-all duration-200 cursor-pointer text-ink-ghost hover:text-ink-faint hover:bg-paper-warm"
+                    title={t("notepad.tooltip.pinToTile", { defaultValue: "转为磁贴" })}
+                  >
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
                     >
-                      {t("notepad.button.clear", { defaultValue: "清空" })}
-                    </button>
-                    <button
-                      onClick={() => void handleSave()}
-                      className="px-4 py-1.5 text-[12px] text-cloud bg-bamboo hover:bg-bamboo-light rounded-lg transition-all duration-200 font-medium cursor-pointer"
-                    >
-                      {t("common.save", { defaultValue: "保存" })}
-                    </button>
-                  </div>
+                      <path d="M12 17v5" />
+                      <path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v1a1 1 0 0 0 1 1 1 1 0 0 1 1 1z" />
+                    </svg>
+                  </button>
                 </div>
               </div>
-            ) : (
-              <NotepadOpenPanel
-                notes={notes}
-                onOpenNote={(noteId) => void handleOpenNote(noteId)}
-              />
-            )}
-          </>
-          <SurfaceResizeHandles />
-        </div>
-      )}
-    </div>
+
+              <div className="mx-4 mt-1 h-px bg-paper-deep/50" />
+
+              {mode === "new" ? (
+                <div
+                  data-pad-editor-body="true"
+                  className="px-4 pt-3 pb-2 flex flex-col flex-1 min-h-0"
+                >
+                  <input
+                    ref={titleRef}
+                    type="text"
+                    value={title}
+                    onChange={(event) => {
+                      setTitle(event.target.value);
+                      setStatus("dirty");
+                    }}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === "ArrowDown") {
+                        event.preventDefault();
+                        contentRef.current?.focus();
+                      }
+                    }}
+                    placeholder={t("notepad.placeholder.title", { defaultValue: "标题（可选）" })}
+                    className="w-full font-display font-medium text-ink placeholder:text-ink-ghost/60 mb-2 tracking-wide shrink-0"
+                    style={{ fontSize: `${surfaceFontSize}px` }}
+                  />
+
+                  <textarea
+                    ref={contentRef}
+                    data-tab-indent="true"
+                    value={content}
+                    onChange={(event) => {
+                      setContent(event.target.value);
+                      setStatus("dirty");
+                    }}
+                    onPaste={imagePasteHandler}
+                    onDrop={imageDropHandler}
+                    onDragOver={imageDragOverHandler}
+                    onKeyDown={(event) => {
+                      if (event.key === "ArrowUp") {
+                        const ta = contentRef.current;
+                        if (ta && ta.selectionStart === ta.selectionEnd) {
+                          const textBeforeCursor = content.slice(0, ta.selectionStart);
+                          if (!textBeforeCursor.includes("\n")) {
+                            event.preventDefault();
+                            titleRef.current?.focus();
+                          }
+                        }
+                      }
+                    }}
+                    placeholder={t("notepad.placeholder.content", { defaultValue: "写点什么……" })}
+                    className="w-full flex-1 min-h-0 pb-2 leading-relaxed text-ink-soft font-body placeholder:text-ink-ghost/50"
+                    style={{
+                      fontSize: `${surfaceFontSize}px`,
+                      tabSize: `var(--tab-indent-size, 2)`,
+                    }}
+                  />
+
+                  <div className="flex items-center justify-between mt-auto pt-2 border-t border-paper-deep/30 shrink-0">
+                    <span className="text-[11px] text-ink-ghost font-mono tabular-nums truncate max-w-[170px]">
+                      {`${countNoteChars(content)} ${t("common.wordCountUnit", { defaultValue: "字" })} · ${statusLabel[status]}`}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={resetDraft}
+                        className="px-4 py-1.5 text-[12px] text-ink-faint hover:text-ink-soft rounded-lg hover:bg-paper-warm transition-all duration-200 cursor-pointer"
+                      >
+                        {t("notepad.button.clear", { defaultValue: "清空" })}
+                      </button>
+                      <button
+                        onClick={() => void handleSave()}
+                        className="px-4 py-1.5 text-[12px] text-cloud bg-bamboo hover:bg-bamboo-light rounded-lg transition-all duration-200 font-medium cursor-pointer"
+                      >
+                        {t("common.save", { defaultValue: "保存" })}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <NotepadOpenPanel
+                  notes={notes}
+                  onOpenNote={(noteId) => void handleOpenNote(noteId)}
+                />
+              )}
+            </>
+          </div>
+        )}
+      </div>
+      <SurfaceResizeHandles />
+    </GlassSurface>
   );
 }

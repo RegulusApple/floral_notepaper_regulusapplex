@@ -1,4 +1,27 @@
 {
+  "desktopTasks": {
+    "mode": "Content mode",
+    "note": "Note",
+    "tasks": "Tasks",
+    "today": "Today",
+    "empty": "Start with one small thing.",
+    "add": "Add task",
+    "enterHint": "Press Enter to add a task",
+    "edit": "Edit",
+    "complete": "Complete: {{text}}",
+    "uncomplete": "Uncomplete: {{text}}",
+    "delete": "Delete: {{text}}",
+    "reorder": "Drag to reorder; Alt + Up/Down to move",
+    "saveFailed": "Couldn't save. Your input is retained.",
+    "retry": "Retry save",
+    "opacity": "Opacity",
+    "opacityHint": "5% clearer · 95% more solid",
+    "fallback": "Transparent",
+    "glassFallback": "Native glass blur is unavailable on this system.",
+    "shortcut": "Show tasks shortcut",
+    "shortcutHint": "Show and focus tasks without duplicate windows. Record or clear the shortcut.",
+    "open": "Open tasks"
+  },
   "about": {
     "closeTitle": "Close About",
     "contributors": "Contributors",
@@ -92,6 +115,8 @@
     "unsafePath": "Unsafe path: outside the notes root, a linked directory, or a folder's own descendant."
   },
   "markdown": {
+    "taskCheck": "Mark complete",
+    "taskUncheck": "Mark incomplete",
     "copied": "Copied",
     "copy": "Copy",
     "emptyHint": "Preview of the current note",
@@ -237,6 +262,20 @@
     }
   },
   "settings": {
+    "tiles": {
+      "style": "Tile style",
+      "appearance": "Jelly appearance",
+      "opacityHint": "Opacity is saved separately for each note. Ctrl + wheel adjusts only the tile under the pointer. Lower values are more transparent.",
+      "opacityFor": "Opacity for {{title}}",
+      "empty": "Create a tile note or pin a note to adjust its opacity here.",
+      "styles": {
+        "paper": "Yellow glass",
+        "minimal": "White glass",
+        "glass-blue": "Blue glass",
+        "floral-purple": "Floral purple jelly",
+        "floral-green": "Floral green jelly"
+      }
+    },
     "autoSave": {
       "externalFile": "Auto-save external files",
       "note": "Auto-save notes",
@@ -298,7 +337,7 @@
     },
     "tileColor": {
       "custom": "Custom",
-      "followTheme": "Follow Theme",
+      "followTheme": "Use Style Colors",
       "label": "Tile color"
     },
     "tileCtrlClose": "Ctrl+Right-click to close tile",

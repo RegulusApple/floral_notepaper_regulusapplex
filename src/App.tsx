@@ -12,6 +12,7 @@ import type { AppConfig, ThemeOption } from "./features/settings/types";
 import { getInitialRoute } from "./features/windows/windowRoutes";
 import { syncLanguage } from "./locales";
 import { listen } from "@tauri-apps/api/event";
+import { GlassQa } from "./dev/GlassQa";
 
 function App() {
   const route = getInitialRoute();
@@ -78,7 +79,10 @@ function App() {
     return () => document.removeEventListener("keydown", preventSystemMenu, true);
   }, []);
 
-  return (
+  return import.meta.env.DEV &&
+    new URLSearchParams(window.location.search).get("glassQa") === "1" ? (
+    <GlassQa />
+  ) : (
     <ContextMenuProvider>
       <div className="app-window-shell h-screen font-body text-ink overflow-hidden">
         {activeView === "main" ? (
